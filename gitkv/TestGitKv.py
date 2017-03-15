@@ -4,10 +4,6 @@ from time import sleep
 # Test mode local : repo = Repo()
 import io
 import json
-<<<<<<< HEAD
-
-=======
->>>>>>> 8695794fefcf68dcb9e05aa2672d80bbedff8752
 """
 print('Test mode local ---------------------------------------------------')
 
@@ -54,11 +50,8 @@ for i in range(4) :
 
             print(fir.read())
 """
-<<<<<<< HEAD
+
 # test Json.dump, Json.load
-=======
-#test Json.dump, Json.load
->>>>>>> 8695794fefcf68dcb9e05aa2672d80bbedff8752
 
 """
 s = '{"success" : "ok", "new" : "try time 1"}'

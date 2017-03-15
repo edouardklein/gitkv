@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 #
 # gitkv documentation build configuration file, created by
-# sphinx-quickstart on Tue Mar 14 16:23:12 2017.
+# sphinx-quickstart on Wed Mar 15 11:49:51 2017.
 #
 # This file is execfile()d with the current directory set to its
 # containing dir.

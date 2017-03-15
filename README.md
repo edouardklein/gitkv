@@ -1,13 +1,7 @@
-# Python Module Template FIXME(Change to your project's name)
+# Python Module Template gitkv
 
-## TODO FIXME(remove this section)
 
 - Copy (do not clone, or you'll get all the template history) this repo somewhere
-- Run
-
-        $ make fixme
-
-  to see all FIXMES than need to be fixed and fix them
   
 - Run
 
@@ -36,18 +30,18 @@
 
 ## Overview
 
-FIXME(Project description)
+Use a git repo as a key-value store.
 
 ## Installation
 
 To install use pip:
 
-    $ pip3 install FXIME(name)
+    $ pip3 install gitkv
 
 
 Or clone the repo:
 
-    $ git clone FIXME(repo url)
+    $ git clone https://github.com/edouardklein/gitkv.git
     $ python3 setup.py install
     
     
@@ -56,7 +50,7 @@ Or clone the repo:
 
 ### Documentation
 
-Read the documentation FIXME(doc url) to understand how to use FIXME(name).
+Read the documentation gitkv(doc url) to understand how to use gitkv.
 
 ### In the cloned repo
 
