@@ -11,12 +11,9 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
 
-install_requires = ['sphinx', 'doctest', 'flake8', 'pygit2'] 
+install_requires = ['sphinx', 'flake8', 'pygit2'] 
 dependency_links = [] 
 
-with open(path.join(here, 'LICENSE'), encoding='utf-8') as f:
-    license_text = f.read()
-  
 setup(
     name='gitkv',
     version=__version__,
@@ -24,12 +21,12 @@ setup(
     long_description=long_description,
     url='https://github.com/edouardklein/gitkv',
     download_url='https://github.com/edouardklein/gitkv/tarball/' + __version__,
-    license=license_text,
+    license='AGPLv3',
     classifiers=[
 	'Programming Language :: Python :: 3.4',
     ],
     keywords='gitkv use a git repo as a key-value store.',
-    packages=find_packages(exclude=['docs', 'tests*']),
+    packages=['gitkv'],
     include_package_data=True,
     author='Edouard Klein',
     install_requires=install_requires,
