@@ -1,30 +1,5 @@
 # Python Module Template gitkv
-
-
-- Copy (do not clone, or you'll get all the template history) this repo somewhere
-  
-- Run
-
-        $ sphinx-quickstart
-        
-    And answer the questions so that :
-    - the docs are in docs/
-    - version and release both are 0.0.1
-    - we use doctest and coverage.
-- Init the git repo
-        
-        $ git init
-
-- Set the intial version:
-    
-        $ bumpversion --new-version 0.0.1  # Par exemple
-- Register your project on GitHub/GitLab:
-    - Create the repo through the web interface
-    
-            $ git remote add origin <repo address>
-            $ git add <relevant_files...>
-            $ git push --set-upstream origin master
-        
+#FIXME    
 - Register your project on ReadTheDocs
 - Register your project on PyPI
 
@@ -33,6 +8,17 @@
 Use a git repo as a key-value store.
 
 ## Installation
+Install libgit2 :
+    $ wget https://github.com/libgit2/libgit2/archive/v0.25.0.tar.gz
+    $ tar xzf v0.25.0.tar.gz
+    $ cd libgit2-0.25.0/
+    $ cmake .
+    $ make
+    $ sudo make install
+
+apt-get  needed before installation :
+    $ apt-get install git
+    $ apt-get install libffi6 libffi-dev
 
 To install use pip:
 
@@ -43,10 +29,33 @@ Or clone the repo:
 
     $ git clone https://github.com/edouardklein/gitkv.git
     $ python3 setup.py install
+
+verify it is correctly installed:
     
-    
+    $ pip install pygit2
+
+Troubleshooting
+
+The verification step may fail if the dynamic linker does not find the libgit2 library: 
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+  File "/root/Téléchargements/gitkv/gitkv/__init__.py", line 1, in <module>
+    from .gitkv import *
+  File "/root/Téléchargements/gitkv/gitkv/gitkv.py", line 22, in <module>
+    import pygit2
+  File "/usr/local/lib/python3.6/site-packages/pygit2-0.25.0-py3.6-linux-x86_64.egg/pygit2/__init__.py", line 32, in <module>
+    from _pygit2 import *
+ImportError: libgit2.so.25: cannot open shared object file: No such file or directory
+
+This happens for instance in Ubuntu, the libgit2 library is installed within the /usr/local/lib directory, but the linker does not look for it there. To fix this call ldconfig:
+
+$ sudo ldconfig
 
 ## Usage
+
+import gitkv
+with gitkv.Repo(url) as repo :
+	...
 
 ### Documentation
 
