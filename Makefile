@@ -4,11 +4,7 @@ doc:
 	make -C docs html
 
 test:
-	coverage run -m doctest gitkv/__init__.py
-	# FIXed(Add the following to __init__.py)
-	# if __name__ == '__main__':
- 	 	#  import doctest
-  		#  doctest.testmod()
+	coverage run -m doctest ./tests/__init__.py
 
 lint:
 	flake8 $$(find . -type f -name '*.py')
