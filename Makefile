@@ -1,20 +1,19 @@
-# Minimal makefile for Sphinx documentation
-#
+all: doc lint test
 
-# You can set these variables from the command line.
-SPHINXOPTS    =
-SPHINXBUILD   = sphinx-build
-SPHINXPROJ    = gitkv
-SOURCEDIR     = .
-BUILDDIR      = _build
+doc:
+	make -C docs html
 
-# Put it first so that "make" without argument is like "make help".
-help:
-	@$(SPHINXBUILD) -M help "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+test:
+	coverage run -m doctest ./gitkv/__init__.py
 
-.PHONY: help Makefile
+lint:
+	flake8 $$(find . -type f -name '*.py')
 
-# Catch-all target: route all unknown targets to Sphinx using the new
-# "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
-%: Makefile
-	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+fixme:
+	find . -type f | xargs grep --color -H -n -i fixme
+
+todo:
+	find . -type f | xargs grep --color -H -n -i todo
+
+live:
+	find . -type f -name '*.py' | entr make test

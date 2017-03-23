@@ -12,7 +12,7 @@ and it will be remove after.
 
 An exemple of usage :
 
->>> with gitkv.Repo(URL) as repository:
+>>> with gitkv.Repo(URL,quiet=True) as repository:
 ...     # open a file in the repository for write :
 ...     with repository.open('file', modeFIR='w') as file:
 ...         file.write('write on your file')
@@ -73,8 +73,7 @@ class Repo:
 
     gitkv offers a way to work directly on your git repository local:
 
-    >>> import gitkv
-    >>> repository = Repo(URL, diskLocal = True, newDirectory = False)
+    repository = gitkv.Repo(URL, diskLocal = True, newDirectory = False)
 
     Set newDirectory = True if you want create a new git repository.
     This mode is not recommanded if you want work with multi-thread.
@@ -83,7 +82,8 @@ class Repo:
 
     For exemple module os :
 
-    >>> with gitkv.Repo() as repository:
+    >>> import gitkv
+    >>> with gitkv.Repo(quiet=True) as repository:
     ...     # For create a new directory in repository of class Repo :
     ...     repository.os.makedirs('toto_dir')
     ...     # For check with os.path.exists('dirs')
