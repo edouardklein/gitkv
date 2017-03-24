@@ -14,13 +14,15 @@ An exemple of usage :
 
 >>> with gitkv.Repo(URL,quiet=True) as repository:
 ...     # open a file in the repository for write :
-...     with repository.open('file', modeFIR='w') as file:
+...     with repository.open('file', modeFIR='w') as file:  # FIXME: La syntaxe de repository.open doit être la même que celle de open
+...                                                         # FIXME S'assurer que ça marche avec la syntaxe repository.open('file', mode='w')
 ...         file.write('write on your file')
 ...     # And read it :
-...     with repository.open('file', modeFIR='r') as file:
-...         content_read = file.read()
+...     with repository.open('file', modeFIR='r') as file:  # FIXME: S'assurer que ça marche avec la syntaxe repository.open('file', 'r')
+...         print(file.read())
 ...
-18
+write on your file
+18  # FIXME: Pas de 18
 >>> content_read
 'write on your file'
 
@@ -44,6 +46,16 @@ __version__ = '0.0.1'
 
 
 def open(repo, filename, mode='r', quiet=False):
+    # FIXME Ecrire une docstring et utiliser
+    # with gitkv.open(repo, fname, 'w') as f:
+    #     f.write(data)
+    # comme exemple
+    # Il faut aussi que cet exemple:
+    # with gitkv.open(repo, fname) as f:
+    #      data = f.json.load()
+    # fonctionne.
+    # Idem pour le dump:
+    # http://gitlab.lan/hailuan/GitKv/issues/1
     return FileInRepo(filename, repo, mode, OpenOneFile=True, quiet=quiet)
 
 

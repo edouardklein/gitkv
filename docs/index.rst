@@ -8,6 +8,9 @@ Welcome to gitkv's documentation!
 
 .. automodule:: gitkv
 
+                .. FIXME: Utiliser :members: et :special-members: pour documenter tous les membres
+                .. de tes classes. Voir https://github.com/edouardklein/daemux/blob/master/docs/index.rst pour l'exemple
+
 Class Repo
 ==========
 
