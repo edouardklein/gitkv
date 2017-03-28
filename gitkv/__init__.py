@@ -14,17 +14,16 @@ An exemple of usage :
 
 >>> with gitkv.Repo(URL,quiet=True) as repository:
 ...     # open a file in the repository for write :
-...     with repository.open('file', modeFIR='w') as file:  # FIXME: La syntaxe de repository.open doit être la même que celle de open
-...                                                         # FIXME S'assurer que ça marche avec la syntaxe repository.open('file', mode='w')
-...         file.write('write on your file')
+...     with repository.open('file', mode='w') as file:
+...         content = 'content of your file'
+...         c = file.write(content) # doctest: +ELLIPSIS
 ...     # And read it :
-...     with repository.open('file', modeFIR='r') as file:  # FIXME: S'assurer que ça marche avec la syntaxe repository.open('file', 'r')
+...     with repository.open('file', mode='r') as file:
 ...         print(file.read())
 ...
-write on your file
-18  # FIXME: Pas de 18
->>> content_read
-'write on your file'
+content of your file
+
+If you don't want to see messages of git (when clone, commit, push ...), set the parameter quiet = True
 
 Remarque :
     Not work in windows OS. \n
@@ -45,18 +44,27 @@ __email__ = 'edouardklein -at- gmail.com'
 __version__ = '0.0.1'
 
 
-def open(repo, filename, mode='r', quiet=False):
-    # FIXME Ecrire une docstring et utiliser
-    # with gitkv.open(repo, fname, 'w') as f:
-    #     f.write(data)
-    # comme exemple
-    # Il faut aussi que cet exemple:
-    # with gitkv.open(repo, fname) as f:
-    #      data = f.json.load()
-    # fonctionne.
-    # Idem pour le dump:
-    # http://gitlab.lan/hailuan/GitKv/issues/1
-    return FileInRepo(filename, repo, mode, OpenOneFile=True, quiet=quiet)
+def open(URL, filename, mode='r', *args, quiet=False, **kwargs):
+    """Another methode for open a file in a repository
+
+    :param URL: url to the git repository where you want to open a file
+    :param filename: a file you want to open
+    :param mode: same as 'open' methode. you can use all parameter like a 'open'
+    :param quiet: Print imformations from GIT, set True mean a silent mode
+    :return: a object stream
+
+
+    An exemple of usage:
+
+    >>> import gitkv
+    >>> URL = None
+    >>> with gitkv.open(URL, 'yourfile', 'w', encoding = 'utf-8') as file: # doctest: +ELLIPSIS
+    ...     c = file.write('your content')
+    ...
+
+    """
+
+    return FileInRepo(filename, URL, mode, *args, OpenOneFile=True, quiet=quiet, **kwargs)
 
 
 class Repo:
@@ -87,7 +95,8 @@ class Repo:
 
     repository = gitkv.Repo(URL, diskLocal = True, newDirectory = False)
 
-    Set newDirectory = True if you want create a new git repository.
+    Set newDirectory = True if you want create a new git repository if it does
+     not exist.\n
     This mode is not recommanded if you want work with multi-thread.
 
     Class Repo composed many module who manage a repository or dirctory.
@@ -112,11 +121,12 @@ class Repo:
     def __init__(self, url="", diskLocal=False, newDirectory=False, quiet=False):
         """Function prepare the repository git
 
-        :param url: url of git repo source, URL FTP recommended if you have a key ssh
+        :param url: url of git repo source, URL FTP recommended if you have a key ssh\n
             exemple : git@gitlab.lan:hailuan/repotest.git
         :param diskLocal: True if work drectly on git repository in disk local
         :param newDirectory: True if you want make a directory if it doesn't
-         exist, only work on disk local
+         exist, only work on disk local.
+
         """
         # open a temporary directory
         self.quiet = quiet
@@ -158,20 +168,22 @@ class Repo:
             else:  # Error of URL of repo git
                 raise ValueError
 
-    def open(self, filename, modeFIR='rb'):
+    def open(self, filename, mode='r', *args, **kwargs):
         """Call and open (with io module) a file in Repository
 
-        :return: stream interface for write or read file
+        :param: filename : the file name you want to open.
+        :param: mode,*args,***kwargs : same when you call a stream object with 'open' methode.
+        :return: a stream object for write or read file.
+
         """
         logging.info('Open file ' + filename)
-        return FileInRepo(filename, self.tempDir_path, modeFIR, quiet=self.quiet)
+        return FileInRepo(filename, self.tempDir_path, mode, *args, OpenOneFile=False, quiet=self.quiet, **kwargs)
 
     def determine_func(self, name_module):
-        """Search and import the function of another module and set
-        automatically the argument from this class to that function
-        """
+        # Search and import the function of another module and set
+        # automatically the argument from this class to that function
         modulename = importlib.import_module(str(name_module))
-        Wrapper = MR(name_module, modulename, [self.tempDir_path])
+        Wrapper = MR(name_module, modulename, self.tempDir_path)
         return Wrapper
 
     def __getattr__(self, item):
@@ -199,7 +211,7 @@ class Repo:
                 # call a pull
                 with subprocess.Popen(['git', 'pull', '--no-log'], cwd=self.tempDir_path) as sp_pull:
                     sp_pull.wait()
-                # then push
+                # then push again
                 with subprocess.Popen(['git', 'push'], cwd=self.tempDir_path) as sp_push:
                     sp_push.wait()
 
@@ -230,12 +242,13 @@ class MR:
     be used in def __getattr__ of class FIR and Repo
     """
 
-    def __init__(self, strModule, Module, listData):
+    def __init__(self, strModule, Module, Data_to_set_in):
         self.Module = Module
-        self.listData = listData
+        self.Data_to_set_in = Data_to_set_in
         self.strModule = strModule
 
     def TryAll(self, listTry, Func, *args1, **kwargs1):
+        # will be remove
         if not listTry:
             return Func(*args1, **kwargs1)
         try:
@@ -245,7 +258,6 @@ class MR:
             except:
                 a = list(args1)
                 a.append(listTry[0])
-                # print(a)
                 return Func(*a, **kwargs1)
         except:
             del listTry[0]
@@ -254,21 +266,25 @@ class MR:
     def clone_func(self, Module_Func, *args, **kwargs):
         """call a function Module_Func in module with paramettre in list self.listdata
         """
-        lD = self.listData
 
-        def fonction(*args, f=Module_Func, listData=lD, **kwargs):
-            return self.TryAll(listData, f, *args, **kwargs)
+        def fonction(*args, f=Module_Func, Data=self.Data_to_set_in, **kwargs):
+            if isinstance(Data, str):
+                return f(args[0] + Data, *args[1:], **kwargs)
+            else:
+                l = list(args)
+                l.append(Data)
+                return f(*l, **kwargs)
 
         return fonction
 
     def __getattr__(self, item):
         item_in_module = self.Module.__getattribute__(item)
         if isinstance(item_in_module, types.FunctionType):
-            return self.clone_func(item_in_module, self.listData)
+            return self.clone_func(item_in_module, self.Data_to_set_in)
         else:
             nameModuleFils = str(self.strModule) + '.' + str(item)
             ModuleFils = importlib.import_module(nameModuleFils)
-            newMR = MR(nameModuleFils, ModuleFils, self.listData[:])
+            newMR = MR(nameModuleFils, ModuleFils, self.Data_to_set_in[:])
             return newMR
 
 
@@ -292,11 +308,11 @@ class FileInRepo:
 
     >>> with gitkv.Repo() as repository:
     ...     # call function dump of json
-    ...     with repository.open('jsonfile', modeFIR='w') as jsonfile:
+    ...     with repository.open('jsonfile', mode='w') as jsonfile:
     ...         jsonfile.json.dump(content_json)
     ...     # call function loads of json
-    ...     with repository.open('jsonfile', modeFIR='r') as jsonfile:
-    ...         result_json_load = jsonfile.json.loads()
+    ...     with repository.open('jsonfile', mode='r') as jsonfile:
+    ...         result_json_load = jsonfile.json.load()
     ...
 
     >>> result_json_load['success']
@@ -308,7 +324,10 @@ class FileInRepo:
     def __enter__(self):
         return self
 
-    def __init__(self, filename, path_repo, modeFIR='rb', OpenOneFile=False, quiet=False):
+    def __init__(self, filename, path_repo, mode='r', *args, OpenOneFile=False, quiet=False, **kwargs):
+        """Prepare object, on gitkv, call this class from gitkv.open or Repo.open is recommanded
+
+        """
         self.quiet = quiet
         self.commit_message = 'GitKV : ' + filename
         self.OpenOneFile = OpenOneFile
@@ -318,8 +337,8 @@ class FileInRepo:
         else:
             self.path_repo = path_repo
         self.filename = filename
-        self.modeFIR = modeFIR
-        self.FileStreamIO = io.open(self.path_repo + self.filename, mode=modeFIR)
+        self.mode = mode
+        self.FileStreamIO = io.open(self.path_repo + self.filename, mode=mode, *args, **kwargs)
         logging.info('Open git commit for file ' + self.filename)
 
     def __iter__(self):
@@ -432,16 +451,10 @@ class FileInRepo:
                     return commit.commit_time
 
     def determine_func(self, name_module):
+        # Search and import the function of another module and set
+        # automatically the argument from this class to that function
         Module = importlib.import_module(str(name_module))
-        if (self.modeFIR == 'r' or self.modeFIR == 'rb'):
-            textB = self.FileStreamIO.read()
-            try:
-                textB = textB.decode('utf-8')
-            except:
-                pass
-            Wrapper = MR(name_module, Module, [self.FileStreamIO, textB])
-        else:
-            Wrapper = MR(name_module, Module, [self.FileStreamIO])
+        Wrapper = MR(name_module, Module, self.FileStreamIO)
         return Wrapper
 
     def commit(self, message):
