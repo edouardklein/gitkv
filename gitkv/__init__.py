@@ -1,33 +1,12 @@
 """gikv is a python's module use a git repo as a key-value store.
 
-This module use git and python pygit2 so please check if they are properly installed
+This module use git and python pygit2 so please check if they are properly installed.
 gitkv work on a temporary directory as a git repository cloned from a URL or a path local.
 
->>> import gitkv
-
-For use gitkv, input a url of repository, if url = None, gitkv work on a new repository
-and it will be remove after.
-
->>> URL = None
-
-An exemple of usage :
-
->>> with gitkv.Repo(URL,quiet=True) as repository:
-...     # open a file in the repository for write :
-...     with repository.open('file', mode='w') as file:
-...         content = 'content of your file'
-...         c = file.write(content) # doctest: +ELLIPSIS
-...     # And read it :
-...     with repository.open('file', mode='r') as file:
-...         print(file.read())
-...
-content of your file
-
-If you don't want to see messages of git (when clone, commit, push ...), set the parameter quiet = True
-
-Remarque :
+.. Note::
     Not work in windows OS. \n
     gitkv only work in branch master of the repository.
+
 """
 import io
 import logging
@@ -45,7 +24,7 @@ __version__ = '0.0.1'
 
 
 def open(URL, filename, mode='r', *args, quiet=False, **kwargs):
-    """Another methode for open a file in a repository
+    """Methode for open a file in a repository
 
     :param URL: url to the git repository where you want to open a file
     :param filename: a file you want to open
@@ -53,14 +32,24 @@ def open(URL, filename, mode='r', *args, quiet=False, **kwargs):
     :param quiet: Print imformations from GIT, set True mean a silent mode
     :return: a object stream
 
+    - An exemple of usage:
 
-    An exemple of usage:
+    For use gitkv, input a url of repository, if url = None, gitkv work on a
+    new repository and it will be remove after.
 
     >>> import gitkv
     >>> URL = None
+
+    :Example:
+    \nURL = '/home/root/GitRepo'
+    \nURL = 'https://github.com/edouardklein/gitkv.git'
+
     >>> with gitkv.open(URL, 'yourfile', 'w', encoding = 'utf-8') as file: # doctest: +ELLIPSIS
     ...     c = file.write('your content')
     ...
+
+    A commit and a push to git remote repository remote will be excetuted by
+    taking out the statement "with".\n
 
     """
 
@@ -70,33 +59,56 @@ def open(URL, filename, mode='r', *args, quiet=False, **kwargs):
 class Repo:
     """Open a git repository from an URL.
 
+    >>> import gitkv
+    >>> URL = None
+
     repo = Repo() ---> a temporary repository. \n
-    repo = Repo(URL) -> clone a git repository from URL, push after the closure. \n
-    Exemple for URL :\n
+    repo = Repo(URL) -> clone a git repository from URL, push after the
+     closure. \n
+    - Exemple for URL :\n
     URL = '/home/root/GitRepo' \n
     URL = 'https://github.com/edouardklein/gitkv.git'
 
+    - An exemple of usage :\n
+    If you don't want to see messages of git (when clone, commit, push ...),
+    set the parameter quiet = True\n
+    >>> with gitkv.Repo(URL,quiet=True) as repository:
+    ...     # open a file in the repository for write :
+    ...     with repository.open('file1', mode='w') as file:
+    ...         content = 'content of your file1'
+    ...         c = file.write(content) # doctest: +ELLIPSIS
+    ...     # You can call another file
+    ...     with repository.open('file2', mode='a') as file:
+    ...         content = 'content of your file2'
+    ...         c = file.write(content) # doctest: +ELLIPSIS
+    ...     # And read a file you want :
+    ...     with repository.open('file1', mode='r') as file:
+    ...         print(file.read())
+    ...
+    content of your file1
+
     gitkv send a command push to git remote repository when this class is closing.
-    + repo.close() \n
-    + usage statement with \n
+
     An exception PushConflict will be returned when gitkv can't push on the remote
     because a conflict.
 
     If URL is a directory in disk local :\n
     Please config your git repository with the command before call gitkv.Repo(URL)
 
-    > git config receive.denyCurrentBranch ignore
+    - git config receive.denyCurrentBranch ignore
 
     For receive the content of the git repositry after a push from gitkv:
 
-    > git checkout -f
+    - git checkout -f
+
+    **Work on a git repository local**
 
     gitkv offers a way to work directly on your git repository local:
 
-    repository = gitkv.Repo(URL, diskLocal = True, newDirectory = False)
+    >>> repository = gitkv.Repo(URL, diskLocal = True, newDirectory = False)
+    ...
 
-    Set newDirectory = True if you want create a new git repository if it does
-     not exist.\n
+    Set newDirectory = True if you want create a new git repository if it does not exist.\n
     This mode is not recommanded if you want work with multi-thread.
 
     Class Repo composed many module who manage a repository or dirctory.
@@ -111,7 +123,6 @@ class Repo:
     ...     repository.os.path.exists('toto_dir')
     ...
     True
-
     """
 
     def __enter__(self):
@@ -172,7 +183,7 @@ class Repo:
         """Call and open (with io module) a file in Repository
 
         :param: filename : the file name you want to open.
-        :param: mode,*args,***kwargs : same when you call a stream object with 'open' methode.
+        :param: mode,*args,***kwargs : same when you call a stream object with 'io.open' methode.
         :return: a stream object for write or read file.
 
         """
@@ -190,6 +201,7 @@ class Repo:
         return self.determine_func(item)
 
     def close(self):
+        """Closure the clone repository, send a push to git remote repository"""
         self.__exit__()
 
     class PushConflict(Exception):
@@ -247,22 +259,6 @@ class MR:
         self.Data_to_set_in = Data_to_set_in
         self.strModule = strModule
 
-    def TryAll(self, listTry, Func, *args1, **kwargs1):
-        # will be remove
-        if not listTry:
-            return Func(*args1, **kwargs1)
-        try:
-            try:
-                a = listTry[0] + args1[0]
-                return Func(a, **kwargs1)
-            except:
-                a = list(args1)
-                a.append(listTry[0])
-                return Func(*a, **kwargs1)
-        except:
-            del listTry[0]
-            return self.TryAll(listTry, Func, *args1, **kwargs1)
-
     def clone_func(self, Module_Func, *args, **kwargs):
         """call a function Module_Func in module with paramettre in list self.listdata
         """
@@ -284,7 +280,7 @@ class MR:
         else:
             nameModuleFils = str(self.strModule) + '.' + str(item)
             ModuleFils = importlib.import_module(nameModuleFils)
-            newMR = MR(nameModuleFils, ModuleFils, self.Data_to_set_in[:])
+            newMR = MR(nameModuleFils, ModuleFils, self.Data_to_set_in)
             return newMR
 
 
@@ -495,6 +491,8 @@ class FileInRepo:
             return self.determine_func(func)
 
     def close(self):
+        """Close the stream object, a commit automatic will execute when the
+        file is changed"""
         self.__exit__()
 
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
@@ -509,4 +507,5 @@ class FileInRepo:
 
 if __name__ == "__main__":
     import doctest
+
     doctest.testmod()

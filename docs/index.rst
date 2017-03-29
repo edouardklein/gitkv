@@ -7,20 +7,7 @@ Welcome to gitkv's documentation!
 =================================
 
 .. automodule:: gitkv
-    :members: open
-
-Class Repo
-==========
-
-.. autoclass:: Repo
-    :members:
-    :special-members: __init__
-
-Class FileInRepo
-================
-
-.. autoclass:: FileInRepo
-    :members:
+    :members: open, Repo, FileInRepo
     :special-members: __init__
 
 .. toctree::
