@@ -1,12 +1,54 @@
-"""gikv is a python's module use a git repo as a key-value store.
+"""``gikv`` lets you use a git repo as a key-value store.
 
-This module use git and python pygit2 so please check if they are properly installed.
-gitkv work on a temporary directory as a git repository cloned from a URL or a path local.
+FIXME: Tous les messages à afficher doivent passer par le module logging
+ce qui permet à l'utilisateur de choisir lui même, à un seul endroit, quels
+messages il souhaite voir.
+try:
+    ...:     a = check_output(['sh', '-c', "echo erzrzerzerzerzer; exit 1"])
+    ...:     print('No error, output of command is: {}'.format(a))
+    ...: except CalledProcessError as e:
+    ...:     print('Error, output of command is {}'.format(e.output))
 
-.. Note::
-    Not work in windows OS. \n
-    gitkv only work in branch master of the repository.
+Ca supprime l'argument 'Quiet' de certaines fonctions.
 
+
+>>> # ... test setup ...
+>>> import tempfile
+>>> import pygit2
+>>> tmpdir = tempfile.TemporaryDirectory()
+>>> pygit2.init_repository(tmpdir.name, True)
+>>> # The repo url can be anything that git recognizes as a git repo
+>>> repo_url = tmpdir.name  # Here it is a local path
+>>> # ... /test setup ...
+>>> 
+>>> import gitkv
+>>> with gitkv.open(repo_url, 'yourfile', 'w') as f:
+...     f.write('Your content.')
+13
+>>> # When exiting the with block, a commit is created.
+>>> # Later...
+>>> with gitkv.open(repo_url, 'yourfile') as f:
+...     f.read()
+'Your content.'
+>>> # Multiple reads and writes can happen within one with block,
+>>> # to avoid creating multiple commits,
+>>> # by using the Repo class
+>>> with gitkv.Repo(repo_url) as repo:
+...     with repo.open('yourfile', 'a') as f:
+...         f.write('Additional content.')
+...     data = repo.open('yourfile').read()
+...     data.replace('Your', 'My')
+...     with repo.open('yourfile', 'w') as f:
+...         f.write(data)
+19
+30
+>>> with gitkv.open(repo_url, 'yourfile') as f:
+...     f.read()
+'My content.Additional content.'
+>>> # One can get some info about a file's git history
+>>> with gitkv.open(repo_url, 'yourfile') as f:
+...     f.gitlog()[0]['commit']
+'GitKV: yourfile'
 """
 import io
 import logging
@@ -18,74 +60,36 @@ import time
 import importlib
 import types
 
-__author__ = 'Edouard Klein'
-__email__ = 'edouardklein -at- gmail.com'
 __version__ = '0.0.1'
 
 
-def open(URL, filename, mode='r', *args, quiet=False, **kwargs):
-    """Methode for open a file in a repository
+def open(url, filename, *args, **kwargs):
+    """Open a file in a repository.
 
-    :param URL: url to the git repository where you want to open a file
-    :param filename: a file you want to open
-    :param mode: same as 'open' methode. you can use all parameter like a 'open'
-    :param quiet: Print imformations from GIT, set True mean a silent mode
-    :return: a object stream
+    :param url: git repository where you want to open a file.
+        It can be anything that is accepted by git, such as a relative
+        or absolute path, a http ou https url, or a 'user@host:repo'-type url,
+        etc.
+    :param filename: tge file you want to open
+    :param args, kwars: all other arguments are passed as is to the
+        'true' ``open`` function
+    :return: a stream-like object
 
-    - An exemple of usage:
+    This method clones the repo in a local temporary directory.
 
-    For use gitkv, input a url of repository, if url = None, gitkv work on a
-    new repository and it will be remove after.
-
-    >>> import gitkv
-    >>> URL = None
-
-    :Example:
-    \nURL = '/home/root/GitRepo'
-    \nURL = 'https://github.com/edouardklein/gitkv.git'
-
-    >>> with gitkv.open(URL, 'yourfile', 'w', encoding = 'utf-8') as file: # doctest: +ELLIPSIS
-    ...     c = file.write('your content')
-    ...
-
-    A commit and a push to git remote repository remote will be excetuted by
-    taking out the statement "with".\n
-
+    When ``close()`` is called on the returned object (or when one exits from
+    the with block), an automatic commit is added to our clone, and is then
+    pushed to the repo at ``url``
     """
-
-    return FileInRepo(filename, URL, mode, *args, OpenOneFile=True, quiet=quiet, **kwargs)
+    # FIXME: En faire une classe ?
+    # Il faut que cette classe possède un repo et un file in repo
+    # sauf que quand on ferme l'objet, on ferme aussi le repo
+    # alors que quand on ferme un file in repo, ça ferme pas le repo (ca ferme juste le file)
+    pass
 
 
 class Repo:
-    """Open a git repository from an URL.
-
-    >>> import gitkv
-    >>> URL = None
-
-    repo = Repo() ---> a temporary repository. \n
-    repo = Repo(URL) -> clone a git repository from URL, push after the
-     closure. \n
-    - Exemple for URL :\n
-    URL = '/home/root/GitRepo' \n
-    URL = 'https://github.com/edouardklein/gitkv.git'
-
-    - An exemple of usage :\n
-    If you don't want to see messages of git (when clone, commit, push ...),
-    set the parameter quiet = True\n
-    >>> with gitkv.Repo(URL,quiet=True) as repository:
-    ...     # open a file in the repository for write :
-    ...     with repository.open('file1', mode='w') as file:
-    ...         content = 'content of your file1'
-    ...         c = file.write(content) # doctest: +ELLIPSIS
-    ...     # You can call another file
-    ...     with repository.open('file2', mode='a') as file:
-    ...         content = 'content of your file2'
-    ...         c = file.write(content) # doctest: +ELLIPSIS
-    ...     # And read a file you want :
-    ...     with repository.open('file1', mode='r') as file:
-    ...         print(file.read())
-    ...
-    content of your file1
+    """A git repository.
 
     gitkv send a command push to git remote repository when this class is closing.
 
@@ -107,6 +111,7 @@ class Repo:
 
     >>> repository = gitkv.Repo(URL, diskLocal = True, newDirectory = False)
     ...
+    FIXME: On reste avec un clone obligatoire
 
     Set newDirectory = True if you want create a new git repository if it does not exist.\n
     This mode is not recommanded if you want work with multi-thread.
@@ -287,6 +292,9 @@ class MR:
 class FileInRepo:
     """Manager a file in the git repository.
 
+    # FIXME: Quand on ferme le FileInRepo, on doit pas fermer le repo
+    # Mais il faut virer le flag booléen
+
     Create a commit if this file is modified at closure of this class
 
     Same class Repo, this class can call a function of another module and set
@@ -325,7 +333,7 @@ class FileInRepo:
 
         """
         self.quiet = quiet
-        self.commit_message = 'GitKV : ' + filename
+        self.commit_message = 'GitKV: ' + filename
         self.OpenOneFile = OpenOneFile
         if self.OpenOneFile:
             self.repo = Repo(path_repo)

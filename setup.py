@@ -28,7 +28,7 @@ setup(
     keywords='gitkv use a git repo as a key-value store.',
     packages=['gitkv'],
     include_package_data=True,
-    author='Edouard Klein',
+    author='HaiLuan Nguyen, Edouard Klein',
     install_requires=install_requires,
     dependency_links=dependency_links,
     author_email='edouardklein -at- gmail.com'
