@@ -1,24 +1,13 @@
-"""``gikv`` lets you use a git repo as a key-value store.
-
-FIXME: Tous les messages à afficher doivent passer par le module logging
-ce qui permet à l'utilisateur de choisir lui même, à un seul endroit, quels
-messages il souhaite voir.
-try:
-    ...:     a = check_output(['sh', '-c', "echo erzrzerzerzerzer; exit 1"])
-    ...:     print('No error, output of command is: {}'.format(a))
-    ...: except CalledProcessError as e:
-    ...:     print('Error, output of command is {}'.format(e.output))
-
-Ca supprime l'argument 'Quiet' de certaines fonctions.
+"""``gitkv`` lets you use a git repo as a key-value store.
 
 
 >>> # ... test setup ...
 >>> import tempfile
 >>> import pygit2
 >>> tmpdir = tempfile.TemporaryDirectory()
->>> pygit2.init_repository(tmpdir.name, True)
->>> # The repo url can be anything that git recognizes as a git repo
 >>> repo_url = tmpdir.name  # Here it is a local path
+>>> gitrepo = pygit2.init_repository(repo_url, True)
+>>> # The repo url can be anything that git recognizes as a git repo
 >>> # ... /test setup ...
 >>> 
 >>> import gitkv
@@ -37,7 +26,7 @@ Ca supprime l'argument 'Quiet' de certaines fonctions.
 ...     with repo.open('yourfile', 'a') as f:
 ...         f.write('Additional content.')
 ...     data = repo.open('yourfile').read()
-...     data.replace('Your', 'My')
+...     data = data.replace('Your', 'My')
 ...     with repo.open('yourfile', 'w') as f:
 ...         f.write(data)
 19
@@ -45,10 +34,13 @@ Ca supprime l'argument 'Quiet' de certaines fonctions.
 >>> with gitkv.open(repo_url, 'yourfile') as f:
 ...     f.read()
 'My content.Additional content.'
+
 >>> # One can get some info about a file's git history
 >>> with gitkv.open(repo_url, 'yourfile') as f:
-...     f.gitlog()[0]['commit']
-'GitKV: yourfile'
+...     print(f.gitlog()[0]['commit'])
+GitKV: yourfile
+<BLANKLINE>
+
 """
 import io
 import logging
@@ -63,7 +55,7 @@ import types
 __version__ = '0.0.1'
 
 
-def open(url, filename, *args, **kwargs):
+class open():
     """Open a file in a repository.
 
     :param url: git repository where you want to open a file.
@@ -81,11 +73,26 @@ def open(url, filename, *args, **kwargs):
     the with block), an automatic commit is added to our clone, and is then
     pushed to the repo at ``url``
     """
-    # FIXME: En faire une classe ?
-    # Il faut que cette classe possède un repo et un file in repo
-    # sauf que quand on ferme l'objet, on ferme aussi le repo
-    # alors que quand on ferme un file in repo, ça ferme pas le repo (ca ferme juste le file)
-    pass
+
+    def __enter__(self):
+        logging.info('Open a repository temporary :')
+        return self
+
+    def __init__(self, url, filename, *args, branch='master', **kwargs):
+        self.repo = Repo(url, branch)
+        self.fir = self.repo.open(filename, *args, **kwargs)
+
+    def __getattr__(self, item):
+        return self.fir.__getattr__(item)
+
+    def close(self):
+        self.fir.close()
+        self.repo.close()
+
+    def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
+        # add commit in repo if the file is changed when we use "io.open.write" method
+        # close for save file in directory after write
+        self.close()
 
 
 class Repo:
@@ -105,23 +112,12 @@ class Repo:
 
     - git checkout -f
 
-    **Work on a git repository local**
-
-    gitkv offers a way to work directly on your git repository local:
-
-    >>> repository = gitkv.Repo(URL, diskLocal = True, newDirectory = False)
-    ...
-    FIXME: On reste avec un clone obligatoire
-
-    Set newDirectory = True if you want create a new git repository if it does not exist.\n
-    This mode is not recommanded if you want work with multi-thread.
-
     Class Repo composed many module who manage a repository or dirctory.
 
     For exemple module os :
 
     >>> import gitkv
-    >>> with gitkv.Repo(quiet=True) as repository:
+    >>> with gitkv.Repo() as repository:
     ...     # For create a new directory in repository of class Repo :
     ...     repository.os.makedirs('toto_dir')
     ...     # For check with os.path.exists('dirs')
@@ -134,66 +130,91 @@ class Repo:
         logging.info('Open a repository temporary :')
         return self
 
-    def __init__(self, url="", diskLocal=False, newDirectory=False, quiet=False):
-        """Function prepare the repository git
+    def __init__(self, url=None, branch='master', newBranch=False):
+        """Prepare for open a git repository
 
         :param url: url of git repo source, URL FTP recommended if you have a key ssh\n
             exemple : git@gitlab.lan:hailuan/repotest.git
-        :param diskLocal: True if work drectly on git repository in disk local
-        :param newDirectory: True if you want make a directory if it doesn't
-         exist, only work on disk local.
 
         """
         # open a temporary directory
-        self.quiet = quiet
-        self.push_url = False
+        self.url = url
+        self.branch = branch
+        create_branch = '-b' if newBranch else None
         if not url:  # repo = Repo() -> url None
-            diskLocal = False
-            self.tempDir = tempfile.TemporaryDirectory()
-            self.tempDir_path = self.tempDir.name
+            # Create a temporary git repository
+            self.repo_tempo = tempfile.TemporaryDirectory()
+            self.url = self.repo_tempo.name
             # un directory temporaire creer par tempfile n'est pas compatible
             #  avec init_repository de pygit2
             # solution : creer 1 dossier dans ce directory
-            self.tempDir_path = self.tempDir_path.rstrip('/') + '/gitkv_dir/'
-            logging.warning('Repo temporaire ' + self.tempDir_path)
-            pygit2.init_repository(self.tempDir_path)
-        elif diskLocal:
-            self.tempDir_path = url.rstrip('/') + '/'
-            if not newDirectory:
-                pygit2.Repository(self.tempDir_path)
-            else:  # Create a repository if path is not repository or not doesn't exist
-                try:
-                    pygit2.Repository(self.tempDir_path)
-                except KeyError:
-                    pygit2.init_repository(self.tempDir_path)
-        else:
-            self.tempDir = tempfile.TemporaryDirectory()
-            self.tempDir_path = self.tempDir.name
-            # try to clone the repo from git's url
-            listProcess = ['git', 'clone', url, 'gitkv_dir']
-            Quiet = subprocess.DEVNULL if self.quiet else None
-            with subprocess.Popen(listProcess, cwd=self.tempDir_path,
-                                  stdout=Quiet) as sp:
-                sp.wait()
-            # subprocess git clone finish
-            if sp.returncode == 0:  # clone success
-                logging.info('Clone from ' + url + ' success')
-                self.tempDir_path = self.tempDir_path.rstrip('/') + '/gitkv_dir/'
-                # faire 1 push avant de close
-                self.push_url = True
-            else:  # Error of URL of repo git
-                raise ValueError
+            self.url = self.url.rstrip('/') + '/gitkv_url/'
+            logging.warning('Repo temporaire ' + self.url)
+            pygit2.init_repository(self.url, True)
+        # Prepare a clone repository for gitkv work on it
+        self.tempDir = tempfile.TemporaryDirectory()
+        self.tempDir_path = self.tempDir.name
 
-    def open(self, filename, mode='r', *args, **kwargs):
+        # try to clone the repo from git's url
+        try:
+            git_clone = subprocess.check_output(
+                ['git', 'clone', self.url, 'gitkv_dir'],
+                cwd=self.tempDir_path)
+            logging.info('git clone {}:\n {}'.format(self.url, git_clone))
+            self.tempDir_path = self.tempDir_path.rstrip('/') + '/gitkv_dir/'
+            self.git_repo_tempo = pygit2.Repository(self.tempDir_path)
+
+            # If the repository initial is empty, create a commit 'GitKV: commit initial'
+            if (self.git_repo_tempo.is_empty):
+                with io.open(self.tempDir_path + '.gitignore', 'w') as f:
+                    pass
+                    # git add .
+                    try:
+                        gitadd = subprocess.check_output(
+                            ['git', 'add', '.gitignore'],
+                            cwd=self.tempDir_path)
+                        logging.info(gitadd)
+                    except subprocess.CalledProcessError as e:
+                        logging.info(e.output)
+                    # git commit
+                    try:
+                        gitcommit = subprocess.check_output(
+                            ['git', 'commit', '-m', "'GitKV: commit initial'"],
+                            cwd=self.tempDir_path)
+                        logging.info(gitcommit)
+                    except subprocess.CalledProcessError as e:
+                        logging.info(e.output)
+
+            # git checkout branch
+            try:
+                if newBranch:
+                    gitcheckout = subprocess.check_output(
+                        ['git', 'checkout', '-b', self.branch],
+                        cwd=self.tempDir_path)
+                else:
+                    gitcheckout = subprocess.check_output(
+                        ['git', 'checkout', self.branch],
+                        cwd=self.tempDir_path)
+                logging.info(gitcheckout)
+            except subprocess.CalledProcessError as e2:
+                logging.info('git checkout {}:\n{}'.format(self.branch, e2.output))
+                if self.branch != 'master':
+                    raise ValueError
+
+        except subprocess.CalledProcessError as e:
+            logging.error('git clone {}:\n {}'.format(self.url, e.output))
+            raise ValueError
+
+    def open(self, filename, *args, **kwargs):
         """Call and open (with io module) a file in Repository
 
         :param: filename : the file name you want to open.
-        :param: mode,*args,***kwargs : same when you call a stream object with 'io.open' methode.
+        :param: mode, *args, **kwargs : same when you call a stream object with 'io.open' methode.
         :return: a stream object for write or read file.
 
         """
         logging.info('Open file ' + filename)
-        return FileInRepo(filename, self.tempDir_path, mode, *args, OpenOneFile=False, quiet=self.quiet, **kwargs)
+        return FileInRepo(filename, self.tempDir_path, *args, **kwargs)
 
     def determine_func(self, name_module):
         # Search and import the function of another module and set
@@ -202,6 +223,24 @@ class Repo:
         Wrapper = MR(name_module, modulename, self.tempDir_path)
         return Wrapper
 
+    def recent_commit(self):
+        last = self.git_repo_tempo[self.git_repo_tempo.head.target]
+        commits = self.git_repo_tempo.walk(last.id, pygit2.GIT_SORT_TIME)
+        for commit in commits:
+            return commit
+
+    def listFile(self, idCommit=None):
+        if idCommit:
+            commit = self.git_repo_tempo.get(idCommit)
+        else:
+            commit = self.recent_commit()
+
+        for entry in commit.tree:
+            yield entry.name
+
+    def __iter__(self):
+        return self.listFile().__iter__()
+
     def __getattr__(self, item):
         return self.determine_func(item)
 
@@ -209,32 +248,36 @@ class Repo:
         """Closure the clone repository, send a push to git remote repository"""
         self.__exit__()
 
-    class PushConflict(Exception):
-        pass
-
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
-        if self.push_url:
-            Quiet = subprocess.DEVNULL if self.quiet else None
-            with subprocess.Popen(['git', 'push'],
-                                  cwd=self.tempDir_path,
-                                  stdout=Quiet
-                                  ) as sp_push:
-                sp_push.wait()
-            if sp_push.returncode == 1:
-                logging.warning("If git is a repo local, try config your repo with : \n "
-                                "'git config receive.denyCurrentBranch ignore'  before execution of gitkv\n"
-                                "Then go to remote repository, type 'git checkout -f'")
-                # if conflict
-                # call a pull
-                with subprocess.Popen(['git', 'pull', '--no-log'], cwd=self.tempDir_path) as sp_pull:
-                    sp_pull.wait()
-                # then push again
-                with subprocess.Popen(['git', 'push'], cwd=self.tempDir_path) as sp_push:
-                    sp_push.wait()
+        # git push wen closing
+        try:
+            gitpush = subprocess.check_output(['git', 'push', 'origin', self.branch],
+                                              cwd=self.tempDir_path)
+            logging.info(gitpush)
+        except subprocess.CalledProcessError as e:
+            logging.info(e.output)
+            logging.warning("If git is a repo local,"
+                            " try config your repo with this command before"
+                            " execution of gitkv : \n "
+                            "'git config receive.denyCurrentBranch ignore'")
+            # if conflict
+            # call a pull
+            try:
+                gitpull = subprocess.check_output(['git', 'pull', 'origin', self.branch],
+                                                  cwd=self.tempDir_path)
+                logging.info(gitpull)
+            except subprocess.CalledProcessError as e2:
+                logging.error("Can't pull from {}, message error:"
+                              "\n{}".format(self.url, e2.output))
+            # Then push again
+            try:
+                gitpush2 = subprocess.check_output(['git', 'push', 'origin', self.branch],
+                                                   cwd=self.tempDir_path)
+                logging.info(gitpush2)
+            except subprocess.CalledProcessError as e3:
+                logging.error(e3.output)
+                raise PushConflict(self)
 
-                # FIX cas repo local
-                if sp_push.returncode == 1:
-                    raise PushConflict(self)
         logging.info('Repository temporary Closed')
         # clean the temporary directory
         # self.tempDir.close()
@@ -242,6 +285,7 @@ class Repo:
 
 class PushConflict(Exception):
     """Exception
+
     Exception raised when gitkv can't push in remote repository because a conflict
     """
 
@@ -250,8 +294,6 @@ class PushConflict(Exception):
 
     def __str__(self):
         return ('Error when push because a conflict !')
-
-    pass
 
 
 class MR:
@@ -328,21 +370,14 @@ class FileInRepo:
     def __enter__(self):
         return self
 
-    def __init__(self, filename, path_repo, mode='r', *args, OpenOneFile=False, quiet=False, **kwargs):
+    def __init__(self, filename, path_repo, *args, **kwargs):
         """Prepare object, on gitkv, call this class from gitkv.open or Repo.open is recommanded
 
         """
-        self.quiet = quiet
         self.commit_message = 'GitKV: ' + filename
-        self.OpenOneFile = OpenOneFile
-        if self.OpenOneFile:
-            self.repo = Repo(path_repo)
-            self.path_repo = self.repo.tempDir_path
-        else:
-            self.path_repo = path_repo
+        self.path_repo = path_repo
         self.filename = filename
-        self.mode = mode
-        self.FileStreamIO = io.open(self.path_repo + self.filename, mode=mode, *args, **kwargs)
+        self.FileStreamIO = io.open(self.path_repo + self.filename, *args, **kwargs)
         logging.info('Open git commit for file ' + self.filename)
 
     def __iter__(self):
@@ -366,13 +401,13 @@ class FileInRepo:
         """
         return time.mktime(datetime.datetime.strptime(str_utc, '%Y-%m-%d %H:%M:%S%z').timetuple())
 
-    def gitlog(self, timeStart=0, timeEnd=32472140400, file_name_in_message=False):
+    def gitlog(self, timeStart=0, timeEnd=float('inf'), file_name_in_message=False):
         """Show commits of this file in repo since timeStart to timeEnd
 
         :param timeStar: type timestamp UNIX
         :param timeEnd: type timestamp UNIX
         :param file_name_in_message: just commit where file's name in the message of commit
-        :return: list of all versions of the file in all commit, type of element is json
+        :return: list of all versions of the file in all commit, type of element is dictionaire
 
         An exemple of usage : \n
         file = repository.open('file') \n
@@ -426,8 +461,14 @@ class FileInRepo:
         # print (listcommit.__len__())
         return listcommit
 
-    def version_recent(self, choice='data'):
-        """Extract information of the file's last version
+    def version_recent(self):
+        """Extract information of the recent version of file
+
+        :return : object dictionnaire
+
+        Exemple of usage:
+
+        version_recent()[choice]
 
         Argument choice: \n
         'id'      -> id of last version\n
@@ -447,12 +488,14 @@ class FileInRepo:
             tree = commit.tree
             entry = self.entry_in_commit(tree)
             if entry:
-                if choice == 'data':
-                    return repository[entry.id].data
-                elif choice == 'id':
-                    return entry.id
-                elif choice == 'time':
-                    return commit.commit_time
+                return {
+                    'idcommit': commit.id,
+                    'commit': commit.message,
+                    'id': entry.id,
+                    'name': entry.name,
+                    'data': repository[entry.id].data,
+                    'time': commit.commit_time
+                }
 
     def determine_func(self, name_module):
         # Search and import the function of another module and set
@@ -465,18 +508,21 @@ class FileInRepo:
         """A commit will be added when this file in repository modified
         call this function if you want a another commit before the commit automatic.
         """
-        commentaire = '"' + message + '"'
+        # commentaire = '"' + message + '"'
         logging.info('From gitkv : Commit file ' + self.filename)
         # git add .
-        with subprocess.Popen(['git', 'add', '.'], cwd=self.path_repo) as sp_add:
-            sp_add.wait()
+        try:
+            message_output = subprocess.check_output(['git', 'add', '.'], cwd=self.path_repo)
+            logging.info(message_output)
+        except subprocess.CalledProcessError as e:
+            logging.info(e.output)
         # logging.info('Commit : Add file change, succes = ' + str(sp_add.returncode))
         # git commit
-        listProcess = ['git', 'commit', '-m', commentaire]
-        Quiet = subprocess.DEVNULL if self.quiet else None
-        with subprocess.Popen(listProcess, cwd=self.path_repo, stdout=Quiet) as sp_commit:
-            sp_commit.wait()
-            # logging.info('Commit : commit file, success = ' + str(sp_commit.returncode))
+        try:
+            message_output = subprocess.check_output(['git', 'commit', '-m', message], cwd=self.path_repo)
+            logging.info(message_output)
+        except subprocess.CalledProcessError as e:
+            logging.info(e.output)
 
     def set_commit_message(self, message):
         """ Change the message default of the commit automatic
@@ -491,12 +537,12 @@ class FileInRepo:
 
     def __getattr__(self, func):
         try:
-            if str(func) == 'filedesc':
-                return self.FileStreamIO
-            else:
+            return self.__getattribute__(func)
+        except AttributeError:
+            try:
                 return self.FileStreamIO.__getattribute__(func)
-        except:
-            return self.determine_func(func)
+            except AttributeError:
+                return self.determine_func(func)
 
     def close(self):
         """Close the stream object, a commit automatic will execute when the
@@ -508,9 +554,6 @@ class FileInRepo:
         # close for save file in directory after write
         self.FileStreamIO.close()
         self.commit(self.commit_message)
-
-        if self.OpenOneFile:
-            self.repo.close()
 
 
 if __name__ == "__main__":
