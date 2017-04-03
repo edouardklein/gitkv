@@ -229,7 +229,7 @@ class Repo:
         for commit in commits:
             return commit
 
-    def listFile(self, idCommit=None):
+    def listFiles(self, idCommit=None):
         if idCommit:
             commit = self.git_repo_tempo.get(idCommit)
         else:
@@ -239,7 +239,7 @@ class Repo:
             yield entry.name
 
     def __iter__(self):
-        return self.listFile().__iter__()
+        return self.listFiles().__iter__()
 
     def __getattr__(self, item):
         return self.determine_func(item)
@@ -377,11 +377,11 @@ class FileInRepo:
         self.commit_message = 'GitKV: ' + filename
         self.path_repo = path_repo
         self.filename = filename
-        self.FileStreamIO = io.open(self.path_repo + self.filename, *args, **kwargs)
+        self.object_StreamIO = io.open(self.path_repo + self.filename, *args, **kwargs)
         logging.info('Open git commit for file ' + self.filename)
 
     def __iter__(self):
-        return self.FileStreamIO.__iter__()
+        return self.object_StreamIO.__iter__()
 
     def entry_in_commit(self, tree):
         """return entry having the recent file
@@ -478,11 +478,7 @@ class FileInRepo:
         'commit'  -> the commit's message \n
         'name'    -> the entry's name \n
         """
-        try:
-            repository = pygit2.Repository(self.path_repo)
-        except KeyError:
-            pygit2.init_repository(self.path_repo)  # create a repo git (not bare)
-            repository = pygit2.Repository(self.path_repo)
+        repository = pygit2.Repository(self.path_repo)
         last = repository[repository.head.target]
         for commit in repository.walk(last.id, pygit2.GIT_SORT_TIME):
             tree = commit.tree
@@ -501,7 +497,7 @@ class FileInRepo:
         # Search and import the function of another module and set
         # automatically the argument from this class to that function
         Module = importlib.import_module(str(name_module))
-        Wrapper = MR(name_module, Module, self.FileStreamIO)
+        Wrapper = MR(name_module, Module, self.object_StreamIO)
         return Wrapper
 
     def commit(self, message):
@@ -540,7 +536,7 @@ class FileInRepo:
             return self.__getattribute__(func)
         except AttributeError:
             try:
-                return self.FileStreamIO.__getattribute__(func)
+                return self.object_StreamIO.__getattribute__(func)
             except AttributeError:
                 return self.determine_func(func)
 
@@ -552,7 +548,7 @@ class FileInRepo:
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
         # add commit in repo if the file is changed when we use "io.open.write" method
         # close for save file in directory after write
-        self.FileStreamIO.close()
+        self.object_StreamIO.close()
         self.commit(self.commit_message)
 
 
