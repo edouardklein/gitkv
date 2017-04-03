@@ -1,13 +1,14 @@
-"""``gitkv`` lets you use a git repo as a key-value store.
+"""``gitkv`` lets you use a git repo as a key-value store using
+``open``-like sematics.
 
 
 >>> # ... test setup ...
 >>> import tempfile
 >>> import pygit2
 >>> tmpdir = tempfile.TemporaryDirectory()
+>>> # The repo url can be anything that git recognizes as a git repo
 >>> repo_url = tmpdir.name  # Here it is a local path
 >>> gitrepo = pygit2.init_repository(repo_url, True)
->>> # The repo url can be anything that git recognizes as a git repo
 >>> # ... /test setup ...
 >>> 
 >>> import gitkv
@@ -34,7 +35,6 @@
 >>> with gitkv.open(repo_url, 'yourfile') as f:
 ...     f.read()
 'My content.Additional content.'
-
 >>> # One can get some info about a file's git history
 >>> with gitkv.open(repo_url, 'yourfile') as f:
 ...     print(f.gitlog()[0]['commit'])
@@ -60,36 +60,39 @@ class open():
 
     :param url: git repository where you want to open a file.
         It can be anything that is accepted by git, such as a relative
-        or absolute path, a http ou https url, or a 'user@host:repo'-type url,
+        or absolute path, a http or https url, or a 'user@host:repo'-type url,
         etc.
-    :param filename: tge file you want to open
-    :param args, kwars: all other arguments are passed as is to the
+    :param filename: the file you want to open
+    :param args kwargs: all other arguments are passed as is to the
         'true' ``open`` function
     :return: a stream-like object
 
     This method clones the repo in a local temporary directory.
 
-    When ``close()`` is called on the returned object (or when one exits from
+    It is usually instanciated as a context manager.
+
+    When ``close()`` is called on the returned object (e.g. when one exits from
     the with block), an automatic commit is added to our clone, and is then
-    pushed to the repo at ``url``
+    pushed to the repo at ``url``.
     """
 
-    def __enter__(self):
+    def __enter__(self):  # FIXME Docstring
         logging.info('Open a repository temporary :')
         return self
 
-    def __init__(self, url, filename, *args, branch='master', **kwargs):
+    def __init__(self, url, filename, *args, branch='master', **kwargs):  # FIXME: Docstring
         self.repo = Repo(url, branch)
         self.fir = self.repo.open(filename, *args, **kwargs)
 
-    def __getattr__(self, item):
+    def __getattr__(self, item):  # FIXME: Docstring
         return self.fir.__getattr__(item)
 
-    def close(self):
+    def close(self):  # FIXME: Docstring
         self.fir.close()
         self.repo.close()
 
-    def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
+    def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):  # FIXME: Docstring
+        # FIXME: M'expliquer la différence entre exit et close.
         # add commit in repo if the file is changed when we use "io.open.write" method
         # close for save file in directory after write
         self.close()
@@ -98,10 +101,52 @@ class open():
 class Repo:
     """A git repository.
 
-    gitkv send a command push to git remote repository when this class is closing.
+    It is usually instanciated as a context manager.
 
-    An exception PushConflict will be returned when gitkv can't push on the remote
-    because a conflict.
+    The provided repo is cloned. Upon the exiting the context, a commit is
+    created and pushed to the original repo.
+
+    An PushConflict exception will be raised when gitkv can't push on the
+    remote because of a conflict.  FIXME: Respecter la PEP8 dans le nom de la classe d'exception https://www.python.org/dev/peps/pep-0008/#exception-names
+
+    Some calls can be made within the context of the
+    cloned repo, with automatic module importing:
+
+    >>> import gitkv
+    >>> with gitkv.Repo() as repo:
+    ...     # Instead of
+    ...     # import os
+    ...     # os.makedirs(repo.path+'/example/')
+    ...     # one can write:
+    ...     repo.os.makedirs('/example/')
+    ...     # it works as expected
+    ...     import os
+    ...     os.path.exists(repo.path+'/example/')
+    ...     # one could have written:
+    ...     # repo.os.path.exists('/example/')
+    ...
+    True
+
+    The lookup is dynamic, any call that is not understood by ``Repo`` directly
+    will lead to a call with the ``Repo``'s path attribute prepended to the
+    first argument. Anything between the Repo and the function is interpreted
+    as a module name.
+    """
+
+    def __enter__(self):
+        logging.info('Open a repository temporary :')
+        return self
+
+    def __init__(self, url=None, branch='master', newBranch=False):  # FIXME virer newBranch et branch (et tout le code qui va avec) pour l'instant.
+        # FIXME: J'arrête là pour l'instant, de manière générale:
+        # - tous les noms de variables, fonction, etc. doivent être en anglais et respecter la PEP8 et les autres PEP
+        # - Attention à ne pas faire de code trop imbriqué, je n'ai pas regardé le détail mais je pense que certaines parties pourraient être réécrites plus platement
+        # - Il faudrait (je pense que c'est possible) ne pas utiliser la même classe MR pour Repo et FileInRepo (puisqu'elles ne font pas la même chose)
+        # - Du coup je pense qu'il sera possible de déporter le code dans les __getattr__ de ces deux classes et donc supprimer les classes MR.
+        """Prepare for open a git repository
+
+        :param url: url of git repo source, URL FTP recommended if you have a key ssh\n
+            exemple : git@gitlab.lan:hailuan/repotest.git
 
     If URL is a directory in disk local :\n
     Please config your git repository with the command before call gitkv.Repo(URL)
@@ -111,31 +156,6 @@ class Repo:
     For receive the content of the git repositry after a push from gitkv:
 
     - git checkout -f
-
-    Class Repo composed many module who manage a repository or dirctory.
-
-    For exemple module os :
-
-    >>> import gitkv
-    >>> with gitkv.Repo() as repository:
-    ...     # For create a new directory in repository of class Repo :
-    ...     repository.os.makedirs('toto_dir')
-    ...     # For check with os.path.exists('dirs')
-    ...     repository.os.path.exists('toto_dir')
-    ...
-    True
-    """
-
-    def __enter__(self):
-        logging.info('Open a repository temporary :')
-        return self
-
-    def __init__(self, url=None, branch='master', newBranch=False):
-        """Prepare for open a git repository
-
-        :param url: url of git repo source, URL FTP recommended if you have a key ssh\n
-            exemple : git@gitlab.lan:hailuan/repotest.git
-
         """
         # open a temporary directory
         self.url = url
