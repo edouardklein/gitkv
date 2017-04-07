@@ -6,7 +6,8 @@
 >>> import tempfile
 >>> import pygit2
 >>> tmpdir = tempfile.TemporaryDirectory()
->>> # The repo url can be anything that git recognizes as a git repo
+>>> # The repo url can be anything that git recognizes
+>>> # as a git repo
 >>> repo_url = tmpdir.name  # Here it is a local path
 >>> gitrepo = pygit2.init_repository(repo_url, True)
 >>> # ... /test setup ...
@@ -52,24 +53,29 @@ import time
 import importlib
 import types
 
+logging.basicConfig(level=logging.DEBUG)
+
 __version__ = '0.0.1'
+
+
+def run_cmd(cmd, **kwargs):  # FIXED function
+    '''Run a command, log it, raise on error.'''
+    try:
+        output = subprocess.check_output(cmd, **kwargs,
+                                         stderr=subprocess.STDOUT).decode('utf-8')
+        logging.debug('{}\n\t{}'.format(' '.join(cmd),
+                                        '\n\t'.join(output.split('\n'))))
+    except subprocess.CalledProcessError as e:
+        logging.error('{}\n{}'.format(' '.join(cmd), e.output))
+        raise RuntimeError  # FIXED RUNTIME
 
 
 class open:
     """Open a file in a repository.
 
-    :param url: git repository where you want to open a file.
-        It can be anything that is accepted by git, such as a relative
-        or absolute path, a http or https url, or a ``user@host:repo`` type url,
-        etc.
-    :param filename: the file you want to open
-    :param args kwargs: all other arguments are passed as is to the
-        'true' ``open`` function
-    :return: a stream-like object
+    It is usually instanciated as a context manager.
 
     This method clones the repo in a local temporary directory.
-
-    It is usually instanciated as a context manager.
 
     When ``close()`` is called on the returned object (e.g. when one exits from
     the with block), an automatic commit is added to our clone, and is then
@@ -77,38 +83,36 @@ class open:
     """
 
     def __enter__(self):
-        """Start bloc 'with'.
-        """
-        logging.info('Open a repository temporary :')
+        """Enter a ``with`` block"""
         return self
 
     def __init__(self, url, filename, *args, **kwargs):
-        """Prepare object file in repo.
-        """
+        """Return the file-like object
+
+            :param url: git repository where you want to open a file.
+                It can be anything that is accepted by git, such as a relative
+                or absolute path, a http or https url, or a ``user@host:repo``
+                type url, etc. See :py:func:`Repo.__init__`
+            :param filename: the file you want to open
+            :param args kwargs: all other arguments are passed as is to the
+                'true' ``open`` function
+            :return: a stream-like object"""
         self.repo = Repo(url)
         self.fir = self.repo.open(filename, *args, **kwargs)
 
     def __getattr__(self, item):
-        """Get attributes of class FileInRepo.
-
-        :param item : name of a attribute
-        """
+        """Pass unknown attribute requests down to our FileInRepo instance"""
         return self.fir.__getattr__(item)
 
     def close(self):
-        """Close the stream object, a commit automatic will execute when the
-        file is changed.
-        """
+        """Close our FileInRepo instance and our Repo instance.
 
-        # add commit in repo if the file is changed
+        see :py:func:`Repo.close` and :py:func:`FileInRepo.close`"""
         self.fir.close()
-        # then push on origin repository
         self.repo.close()
 
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
-        """exec function necessary before exit bloc 'with'."""
-
-        # Close this class
+        """"Exit a ``with`` block."""
         self.close()
 
 
@@ -137,8 +141,9 @@ class Repo:
     ...     import os
     ...     os.path.exists(repo.path+'example/')
     ...     # one could have written:
-    ...     # repo.os.path.exists('example/')
+    ...     repo.os.path.exists('example/')
     ...
+    True
     True
 
     The lookup is dynamic, any call that is not understood by ``Repo`` directly
@@ -148,102 +153,80 @@ class Repo:
     """
 
     def __enter__(self):
-        """Start bloc with"""
-        logging.info('Open a repository temporary :')
+        """Start a ``with`` block."""
         return self
 
-    def __init__(self, url=None):
-        """Prepare for open a git repository
+    def _clone(self, url, path):  # FIXED: function
+        '''Clone the remote repo at url in path'''
+        run_cmd(['git', 'clone', url, path])
 
-        :param url: url of git repo source, URL FTP recommended if you have a key ssh\n
-            exemple : git@gitlab.lan:hailuan/repotest.git
+    def initial_commit_if_empty(self, repo):  # FIXED: function
+        '''Commit an empty .gitignore file if the given repo is empty'''
+        if not repo.is_empty:
+            return
 
-        If URL is a directory in disk local :\n
-        Please config your git repository with the command before call gitkv.Repo(URL)
+        with self.io.open('.gitignore', 'w'):  # FIXED: use the Repo().module.func syntax
+            pass
 
-        - git config receive.denyCurrentBranch ignore
-
-        For receive the content of the git repositry after a push from gitkv:
-
-        - git checkout -f
-        """
-
-        # open a temporary directory
-        if not url:  # repo = Repo() -> url None
-            # Create a temporary git repository
-            self.repo_tempo = tempfile.TemporaryDirectory()
-            self.url = self.repo_tempo.name
-            # un directory temporaire creer par tempfile n'est pas compatible
-            #  avec init_repository de pygit2
-            # solution : creer 1 dossier dans ce directory
-            self.url = self.url.rstrip('/') + '/gitkv_url/'
-            logging.warning('Repo temporaire ' + self.url)
-            pygit2.init_repository(self.url, True)
-        else:
-            self.url = url
-
-        # Prepare a clone repository
-        self.tempDir = tempfile.TemporaryDirectory()
-        self.path = self.tempDir.name
-        self.branch = 'master'
-        # try to clone the repository from git's url
-        try:
-            git_clone = subprocess.check_output(
-                ['git', 'clone', self.url, 'gitkv_dir'],
+        run_cmd(['git', 'add', '.gitignore'], cwd=self.path)
+        run_cmd(['git', 'commit', '-m', "GitKV: initial commit"],
                 cwd=self.path)
-            logging.info('git clone {}:\n {}'.format(self.url, git_clone))
-        except subprocess.CalledProcessError as e:
-            logging.error('git clone {}:\n {}'.format(self.url, e.output))
-            raise ValueError
-        self.path = self.path.rstrip('/') + '/gitkv_dir/'
-        self.git_repo_tempo = pygit2.Repository(self.path)
 
-        # If the repository initial is empty, create a commit 'GitKV: commit initial'
-        # To limit somme bugs when the repository is empty.
-        if self.git_repo_tempo.is_empty:
-            with io.open(self.path + '.gitignore', 'w'):
-                pass
-                # git add .
-            try:
-                gitadd = subprocess.check_output(
-                    ['git', 'add', '.gitignore'],
-                    cwd=self.path)
-                logging.info(gitadd)
-            except subprocess.CalledProcessError as e:
-                logging.info(e.output)
-                # git commit
-            try:
-                gitcommit = subprocess.check_output(
-                    ['git', 'commit', '-m', "'GitKV: commit initial'"],
-                    cwd=self.path)
-                logging.info(gitcommit)
-            except subprocess.CalledProcessError as e:
-                logging.info(e.output)
+    def __init__(self, url=None):
+        """Return the contect manager.
+
+        :param url: git repository where you want to open a file.
+            It can be anything that is accepted by git, such as a relative
+            or absolute path, a http or https url, or a ``user@host:repo``
+            type url, etc.
+
+        If ``url`` is a directory with a non bare git repo in it, please
+        configure your git repository beforehand:
+
+        ``git config receive.denyCurrentBranch ignore``
+
+        You will be able to checkout your changes with:
+
+        ``git checkout -f``
+
+        If ``url`` is None, an empty git repository is created in a
+        temporary directory.
+        """
+        self.url = url
+        if self.url is None:
+            self.tmp_repo_dir = tempfile.TemporaryDirectory()
+            self.url = self.tmp_repo_dir.name
+            logging.info('Initialazing a temporary empty git repo: '
+                         + self.url)
+            pygit2.init_repository(self.url, True)
+
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.path = self.tmp_dir.name + '/'
+        self.branch = 'master'
+        self._clone(self.url, self.path)
+        self.repo = pygit2.Repository(self.path)
+        self.initial_commit_if_empty(self.repo)
 
     def open(self, filename, *args, **kwargs):
-        """Call and open (with io module) a file in Repository
+        """Open a file in this Repo
 
-        :param: filename : the file name you want to open.
-        :param: mode, *args, **kwargs : all other arguments are passed as is
+        :param: filename : the file you want to open.
+        :param: *args, **kwargs : all other arguments are passed as is
             to the 'true' ``open`` function.
-        :return: a stream object for write or read file.
-
+        :return: a stream-like object
         """
-        logging.info('Open file ' + filename)
+        logging.debug('Opening file ' + filename)
         return FileInRepo(filename, self.path, *args, **kwargs)
 
-    def determine_func(self, name_module):
-        """ Search and import the function of another module and set
-        automatically the argument from this class to that function
-        """
+    def __getattr__(self, item):
+        """Call e.g. ``self.m.f(a, b, c)`` as ``self.m.f(self.path+a, b, c)``.
 
-        def transform_data(*args):
-            l = list(args)
-            l[0] = self.path + l[0]
-            return l
+        Import all modules between self and f."""
+        logging.debug("Repo gettart: "+item)
+        def prepend_path_to_first_arg(*args):
+            return [self.path + args[0]] + list(args[1:])
 
-        wrapper = MR(name_module, transform_data)
-        return wrapper
+        return ModuleWrapper(item, prepend_path_to_first_arg)
 
     def recent_commit(self):
         last = self.git_repo_tempo[self.git_repo_tempo.head.target]
@@ -263,10 +246,6 @@ class Repo:
     def __iter__(self):
         """Iterator for Repo"""
         return self.list_files().__iter__()
-
-    def __getattr__(self, item):
-        """Search attribute not defined in this class"""
-        return self.determine_func(item)
 
     def close(self):
         """Closure the clone repository, send a push to git remote repository"""
@@ -312,66 +291,51 @@ class Repo:
 
 
 class PushError(Exception):
-    """Exception
+    """Raised when gitkv can't push in a remote repository because a conflict"""
+    pass
 
-    Exception raised when gitkv can't push in remote repository because a conflict
-    """
 
-    def __str__(self):
-        """Message of exception"""
+class ModuleWrapper:
+    """Dynamically import a module and change the arguments of a function."""
+    module_name = None
+    def __init__(self, item, arg_transform=lambda x: x):
+        """Return the wrapper
 
-        return "A conflict prevents the process push."
-
-    def __init__(self, data):
-        """Prepare exception.
-
-        :param data: data saved for exception handling
+        :param module:string the name of a module to
+            import or of a function to call
+        :param arg_transform:func *args are passed through
+            this function before being given to item if item is callable
         """
-        self.data = data
+        logging.debug("ModuleWrapper: "+item)
+        self.module_name = item
+        self.module = importlib.import_module(item)
+        self.arg_transform = arg_transform
 
+    def func_wrapper(self, func):
+        """Return a wrapper over func that changes the arguments."""
+        logging.debug("ModuleWrapper({}).{}".format(
+            self.module_name,
+            func))
 
-class MR:
-    """Research module and function with a string
-    be used in def __getattr__ of class FIR and Repo
-    """
-
-    def __init__(self, namemodule, function_transform):
-        """
-        Prepare class MR.
-
-        :param namemodule: type string
-        :param function_transform:
-        """
-
-        self.namemodule = namemodule
-        self.function_transform = function_transform
-
-    def clone_func(self, function):
-        """make an adapter function
-        """
-
-        function_transform = self.function_transform
-
-        def fonction(*args, f=function,
-                     ft=function_transform, **kwargs):
-            """Edit arguments to fit with origin function
-            and exec it"""
+        def wrapped_func(*args, f=func,
+                         ft=self.arg_transform, **kwargs):
+            """Actually call f with modified arguments"""
+            logging.debug("ModuleWrapper({}).{}({})".format(
+                self.module_name,
+                func, *ft(*args)))
             return f(*ft(*args), **kwargs)
+        return wrapped_func
 
-        return fonction
-
-    def __getattr__(self, item):
-        """Get attribute non definit in this class"""
-
-        module = importlib.import_module(self.namemodule)
-        item_in_module = module.__getattribute__(item)
-        if isinstance(item_in_module, types.FunctionType):
-            return self.clone_func(item_in_module)
-        # when the attribute is not an attribute callable
+    def __getattr__(self, attr):
+        """Dynamically wrap a module or wrap a function"""
+        logging.debug("ModuleWrapper({}).gettattr({})".format(self.module_name, attr))
+        item_in_module = self.module.__getattribute__(attr)
+        logging.debug("ModuleWrapper: {}".format(item_in_module))
+        if callable(item_in_module):  # FIXED: callable
+            return self.func_wrapper(item_in_module)
         else:
-            next_attribute_name = str(self.namemodule) + '.' + str(item)
-            new_mr = MR(next_attribute_name, self.function_transform)
-            return new_mr
+            next_attribute_name = str(self.module_name) + '.' + attr
+            return ModuleWrapper(next_attribute_name, self.arg_transform)
 
 
 class FileInRepo:
@@ -544,20 +508,6 @@ class FileInRepo:
                     'time': commit.commit_time
                 }
 
-    def determine_func(self, name_module):
-        """ Search and import the function of another module and set
-        automatically the argument from this class to that function
-        """
-        oio = self.object_io
-
-        def transform_data(*args):
-            l = [oio]
-            l = list(args) + l
-            return l
-
-        wrapper = MR(name_module, transform_data)
-        return wrapper
-
     def commit(self, message):
         """A commit will be added when this file in repository modified
         call this function if you want a another commit before the commit automatic.
@@ -592,15 +542,18 @@ class FileInRepo:
         """
         self.commit_message = message
 
-    def __getattr__(self, func):
+    def __getattr__(self, item):
         """Search attribute not defined in this class"""
         try:
-            return self.__getattribute__(func)
+            return self.__getattribute__(item)
         except AttributeError:
             try:
-                return self.object_io.__getattribute__(func)
+                return self.object_io.__getattribute__(item)
             except AttributeError:
-                return self.determine_func(func)
+                def add_stream_as_last_arg(*args):
+                    return list(args) + [self.object_io]
+
+                return ModuleWrapper(item, add_stream_as_last_arg)
 
     def close(self):
         """Close the stream object, a commit automatic will execute when the
