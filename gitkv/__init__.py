@@ -51,7 +51,6 @@ import tempfile
 import datetime
 import time
 import importlib
-import types
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -61,8 +60,8 @@ __version__ = '0.0.1'
 def run_cmd(cmd, **kwargs):  # FIXED function
     '''Run a command, log it, raise on error.'''
     try:
-        output = subprocess.check_output(cmd, **kwargs,
-                                         stderr=subprocess.STDOUT).decode('utf-8')
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT,
+                                         **kwargs).decode('utf-8')
         logging.debug('{}\n\t{}'.format(' '.join(cmd),
                                         '\n\t'.join(output.split('\n'))))
     except subprocess.CalledProcessError as e:
@@ -157,20 +156,16 @@ class Repo:
         return self
 
     def _clone(self, url, path):  # FIXED: function
-        '''Clone the remote repo at url in path'''
+        """Clone the remote repo at url in path"""
         run_cmd(['git', 'clone', url, path])
 
-    def initial_commit_if_empty(self, repo):  # FIXED: function
+    def initial_commit_if_empty(self):  # FIXED: function
         '''Commit an empty .gitignore file if the given repo is empty'''
-        if not repo.is_empty:
+
+        if not self.repo.is_empty:
             return
-
-        with self.io.open('.gitignore', 'w'):  # FIXED: use the Repo().module.func syntax
-            pass
-
-        run_cmd(['git', 'add', '.gitignore'], cwd=self.path)
-        run_cmd(['git', 'commit', '-m', "GitKV: initial commit"],
-                cwd=self.path)
+        with self.open('.gitignore', 'w') as f:
+            f.set_commit_message("GitKV: initial commit")
 
     def __init__(self, url=None):
         """Return the contect manager.
@@ -195,17 +190,19 @@ class Repo:
         self.url = url
         if self.url is None:
             self.tmp_repo_dir = tempfile.TemporaryDirectory()
-            self.url = self.tmp_repo_dir.name
+            self.url = self.tmp_repo_dir.name + '/'
             logging.info('Initialazing a temporary empty git repo: '
                          + self.url)
-            pygit2.init_repository(self.url, True)
+            remote_repo = pygit2.init_repository(self.url, True)
 
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.path = self.tmp_dir.name + '/'
         self.branch = 'master'
         self._clone(self.url, self.path)
         self.repo = pygit2.Repository(self.path)
-        self.initial_commit_if_empty(self.repo)
+        self.initial_commit_if_empty()
+        if url is None:
+            self.git_push()
 
     def open(self, filename, *args, **kwargs):
         """Open a file in this Repo
@@ -222,21 +219,24 @@ class Repo:
         """Call e.g. ``self.m.f(a, b, c)`` as ``self.m.f(self.path+a, b, c)``.
 
         Import all modules between self and f."""
-        logging.debug("Repo gettart: "+item)
+        logging.debug("Repo gettart: " + item)
+
         def prepend_path_to_first_arg(*args):
             return [self.path + args[0]] + list(args[1:])
 
         return ModuleWrapper(item, prepend_path_to_first_arg)
 
     def recent_commit(self):
-        last = self.git_repo_tempo[self.git_repo_tempo.head.target]
-        commits = self.git_repo_tempo.walk(last.id, pygit2.GIT_SORT_TIME)
+        """The last commit in recent branch"""
+        last = self.repo[self.repo.head.target]
+        commits = self.repo.walk(last.id, pygit2.GIT_SORT_TIME)
         for commit in commits:
             return commit
 
     def list_files(self, id_commit=None):
+        """List all files in repo in a commit."""
         if id_commit:
-            commit = self.git_repo_tempo.get(id_commit)
+            commit = self.repo.get(id_commit)
         else:
             commit = self.recent_commit()
 
@@ -247,47 +247,38 @@ class Repo:
         """Iterator for Repo"""
         return self.list_files().__iter__()
 
+    def git_push(self):
+        """Push to remote repository."""
+        run_cmd(['git', 'push', 'origin', self.branch], cwd=self.path)
+
+    def git_pull(self):
+        """Pull from remote repository."""
+        run_cmd(['git', 'pull', 'origin', self.branch], cwd=self.path)
+
+    def git_commit(self, message):
+        """Create a commit."""
+        run_cmd(['git', 'add', '.'], cwd=self.path)
+        run_cmd(['git', 'commit', '-m', message], cwd=self.path)
+
     def close(self):
         """Closure the clone repository, send a push to git remote repository"""
         self.__exit__()
 
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
-        """Exit bloc with, call all function necessary for closure"""
+        """Exit a ``with`` block.
+        Call all function necessary for closure
+        """
+
         # git push wen closing
         try:
-            gitpush = subprocess.check_output(
-                ['git', 'push', 'origin', self.branch],
-                cwd=self.path)
-            logging.info(gitpush)
-        except subprocess.CalledProcessError as e:
-            logging.info(e.output)
-            logging.warning("If git is a repo local,"
-                            " try config your repo with this command before"
-                            " execution of gitkv : \n "
-                            "'git config receive.denyCurrentBranch ignore'")
-            # if conflict
-            # call a pull
+            self.git_push()
+        # if confict
+        except RuntimeError:
             try:
-                gitpull = subprocess.check_output(
-                    ['git', 'pull', 'origin', self.branch],
-                    cwd=self.path)
-                logging.info(gitpull)
-            except subprocess.CalledProcessError as e2:
-                logging.error("Can't pull from {}, message error:"
-                              "\n{}".format(self.url, e2.output))
-            # Then push again
-            try:
-                gitpush2 = subprocess.check_output(
-                    ['git', 'push', 'origin', self.branch],
-                    cwd=self.path)
-                logging.info(gitpush2)
-            except subprocess.CalledProcessError as e3:
-                logging.error(e3.output)
+                self.git_pull()
+                self.git_push()
+            except RuntimeError:
                 raise PushError(self)
-
-        logging.info('Repository temporary Closed')
-        # clean the temporary directory
-        # self.tempDir.close()
 
 
 class PushError(Exception):
@@ -298,6 +289,7 @@ class PushError(Exception):
 class ModuleWrapper:
     """Dynamically import a module and change the arguments of a function."""
     module_name = None
+
     def __init__(self, item, arg_transform=lambda x: x):
         """Return the wrapper
 
@@ -306,7 +298,8 @@ class ModuleWrapper:
         :param arg_transform:func *args are passed through
             this function before being given to item if item is callable
         """
-        logging.debug("ModuleWrapper: "+item)
+
+        logging.debug("ModuleWrapper: " + item)
         self.module_name = item
         self.module = importlib.import_module(item)
         self.arg_transform = arg_transform
@@ -324,6 +317,7 @@ class ModuleWrapper:
                 self.module_name,
                 func, *ft(*args)))
             return f(*ft(*args), **kwargs)
+
         return wrapped_func
 
     def __getattr__(self, attr):
@@ -515,21 +509,16 @@ class FileInRepo:
         # commentaire = '"' + message + '"'
         logging.info('From gitkv : Commit file ' + self.filename)
         # git add .
-        try:
-            message_output = subprocess.check_output(['git', 'add', '.'],
-                                                     cwd=self.path_repo)
-            logging.info(message_output)
-        except subprocess.CalledProcessError as e:
-            logging.info(e.output)
-        # logging.info('Commit : Add file change, succes = ' + str(sp_add.returncode))
+        run_cmd(['git', 'add', '.'], cwd=self.path_repo)
         # git commit
         try:
-            message_output = subprocess.check_output(
+            output = subprocess.check_output(
                 ['git', 'commit', '-m', message],
                 cwd=self.path_repo)
-            logging.info(message_output)
+            logging.debug('{}\n\t{}'.format('git commit:\n\t',
+                                            output))
         except subprocess.CalledProcessError as e:
-            logging.info(e.output)
+            logging.debug(e.output)
 
     def set_commit_message(self, message):
         """ Change the message default of the commit automatic
@@ -550,6 +539,7 @@ class FileInRepo:
             try:
                 return self.object_io.__getattribute__(item)
             except AttributeError:
+
                 def add_stream_as_last_arg(*args):
                     return list(args) + [self.object_io]
 
