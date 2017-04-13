@@ -31,17 +31,23 @@
 ...     data = data.replace('Your', 'My')
 ...     with repo.open('yourfile', 'w') as f:
 ...         f.write(data)
+...     with repo.open('anotherfile', 'w') as f:
+...         f.write('something')
+...     # The commit may can be specified before the block closes
+...     repo.set_commit_message('Multiple edits')
 19
 30
+9
 >>> with gitkv.open(repo_url, 'yourfile') as f:
 ...     f.read()
 'My content.Additional content.'
->>> # One can get some info about a file's git history
->>> with gitkv.open(repo_url, 'yourfile') as f:
-...     print(f.gitlog()[0]['commit'])
-GitKV: yourfile
-<BLANKLINE>
-
+>>> # A repo's history is accessible with the gitlog() function
+>>> [l['commit'] for l in Repo(repo_url).gitlog()]
+['GitKV: Initial commit.', 'GitKV: yourfile.', 'Multiple edits']
+>>> # Which can be called on a file to get its specific history
+>>> with gitkv.open(repo_url, 'anotherfile') as f:
+...     [l['commit'] for l in f.gitlog()]
+['Multiple edits']
 """
 import io
 import logging
@@ -66,7 +72,7 @@ def run_cmd(cmd, **kwargs):  # FIXED function
                                         '\n\t'.join(output.split('\n'))))
     except subprocess.CalledProcessError as e:
         logging.error('{}\n{}'.format(' '.join(cmd), e.output))
-        raise RuntimeError  # FIXED RUNTIME
+        raise RuntimeError
 
 
 class open:
@@ -155,10 +161,6 @@ class Repo:
         """Start a ``with`` block."""
         return self
 
-    def _clone(self, url, path):  # FIXED: function
-        """Clone the remote repo at url in path"""
-        run_cmd(['git', 'clone', url, path])
-
     def initial_commit_if_empty(self):  # FIXED: function
         '''Commit an empty .gitignore file if the given repo is empty'''
 
@@ -193,12 +195,12 @@ class Repo:
             self.url = self.tmp_repo_dir.name + '/'
             logging.info('Initialazing a temporary empty git repo: '
                          + self.url)
-            remote_repo = pygit2.init_repository(self.url, True)
+            pygit2.init_repository(self.url, True)
 
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.path = self.tmp_dir.name + '/'
         self.branch = 'master'
-        self._clone(self.url, self.path)
+        self.git_clone(self.url, self.path)
         self.repo = pygit2.Repository(self.path)
         self.initial_commit_if_empty()
         if url is None:
@@ -219,33 +221,31 @@ class Repo:
         """Call e.g. ``self.m.f(a, b, c)`` as ``self.m.f(self.path+a, b, c)``.
 
         Import all modules between self and f."""
-        logging.debug("Repo gettart: " + item)
+        logging.debug("Repo getattr: " + item)
 
         def prepend_path_to_first_arg(*args):
             return [self.path + args[0]] + list(args[1:])
 
         return ModuleWrapper(item, prepend_path_to_first_arg)
 
-    def recent_commit(self):
-        """The last commit in recent branch"""
-        last = self.repo[self.repo.head.target]
-        commits = self.repo.walk(last.id, pygit2.GIT_SORT_TIME)
-        for commit in commits:
-            return commit
+    def last_commit(self):
+        """Return the last commit"""
+        return self.repo.head.get_object()  # Assume HEAD always point to the
+        # last commit, as it should because we are the owner of our local repo
 
     def list_files(self, id_commit=None):
         """List all files in repo in a commit."""
-        if id_commit:
-            commit = self.repo.get(id_commit)
-        else:
-            commit = self.recent_commit()
-
-        for entry in commit.tree:
+        for entry in (self.repo.get(id_commit) if id_commit is not None
+                      else self.last_commit()).tree:
             yield entry.name
 
     def __iter__(self):
-        """Iterator for Repo"""
+        """Iterator over all the files in the last commit of the repo"""
         return self.list_files().__iter__()
+
+    def git_clone(self, url, path):
+        """Clone the remote repo at url in path."""
+        run_cmd(['git', 'clone', url, path])
 
     def git_push(self):
         """Push to remote repository."""
@@ -261,14 +261,11 @@ class Repo:
         run_cmd(['git', 'commit', '-m', message], cwd=self.path)
 
     def close(self):
-        """Closure the clone repository, send a push to git remote repository"""
+        """Create a commit of our changes and push it to the remote repo."""
         self.__exit__()
 
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
-        """Exit a ``with`` block.
-        Call all function necessary for closure
-        """
-
+        """Exit a ``with`` block."""
         # git push wen closing
         try:
             self.git_push()
