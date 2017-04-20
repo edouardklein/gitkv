@@ -15,6 +15,7 @@
 >>> import gitkv
 >>> with gitkv.open(repo_url, 'yourfile', 'w') as f:
 ...     f.write('Your content.')
+...     # commit automatic "GitKv"
 13
 >>> # When exiting the with block, a commit is created.
 >>> # Later...
@@ -41,12 +42,12 @@
 >>> with gitkv.open(repo_url, 'yourfile') as f:
 ...     f.read()
 'My content.Additional content.'
->>> # A repo's history is accessible with the gitlog() function
->>> [l['commit'] for l in Repo(repo_url).gitlog()]
-['GitKV: Initial commit.', 'GitKV: yourfile.', 'Multiple edits']
+>>> # A repo's history is accessible with the git_log() function
+>>> [l['commit'] for l in gitkv.Repo(repo_url).git_log()]
+['Multiple edits', 'GitKV: yourfile', 'GitKV: initial commit']
 >>> # Which can be called on a file to get its specific history
 >>> with gitkv.open(repo_url, 'anotherfile') as f:
-...     [l['commit'] for l in f.gitlog()]
+...     [l['commit'] for l in f.git_log()]
 ['Multiple edits']
 """
 import io
@@ -102,6 +103,7 @@ class open:
             :param args kwargs: all other arguments are passed as is to the
                 'true' ``open`` function
             :return: a stream-like object"""
+        self.filename = filename
         self.repo = Repo(url)
         self.fir = self.repo.open(filename, *args, **kwargs)
 
@@ -114,6 +116,7 @@ class open:
 
         see :py:func:`Repo.close` and :py:func:`FileInRepo.close`"""
         self.fir.close()
+        self.repo.set_commit_message("GitKV: " + self.filename)
         self.repo.close()
 
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
@@ -167,7 +170,7 @@ class Repo:
         if not self.repo.is_empty:
             return
         with self.open('.gitignore', 'w') as f:
-            f.set_commit_message("GitKV: initial commit")
+            f.git_commit("GitKV: initial commit")
 
     def __init__(self, url=None):
         """Return the contect manager.
@@ -205,6 +208,7 @@ class Repo:
         self.initial_commit_if_empty()
         if url is None:
             self.git_push()
+        self.commit_message = 'GitKV'
 
     def open(self, filename, *args, **kwargs):
         """Open a file in this Repo
@@ -243,6 +247,17 @@ class Repo:
         """Iterator over all the files in the last commit of the repo"""
         return self.list_files().__iter__()
 
+    def set_commit_message(self, message):
+        """ Change the message default of the commit automatic
+        (commit when closing this class).
+
+        A commit will be added when this file in repository modified
+        Call this function if you want change the commit's message default.
+
+        :param message: string, message commit
+        """
+        self.commit_message = message
+
     def git_clone(self, url, path):
         """Clone the remote repo at url in path."""
         run_cmd(['git', 'clone', url, path])
@@ -255,17 +270,55 @@ class Repo:
         """Pull from remote repository."""
         run_cmd(['git', 'pull', 'origin', self.branch], cwd=self.path)
 
-    def git_commit(self, message):
+    def git_commit(self, message=''):
         """Create a commit."""
+        if message == '':
+            message = self.commit_message
         run_cmd(['git', 'add', '.'], cwd=self.path)
-        run_cmd(['git', 'commit', '-m', message], cwd=self.path)
+        try:
+            run_cmd(['git', 'commit', '-m', message], cwd=self.path)
+        except:
+            pass
+
+    def git_log(self, timestart=0, timeend=float('inf')):
+        """Show commits of this Repo since timestart to timeend
+
+               :param timestart: type timestamp UNIX
+               :param timeend: type timestamp UNIX
+               :return: list of commits, type of element is dictionaire
+
+               An exemple of usage : \n
+               ``commits = repo.git_log()`` \n
+               ``commit in commits`` \n
+               ``commit[key]``\n
+
+               All values of ``key``: \n
+               ========== ================================
+                  KEY              Description
+               ========== ================================
+               'time'      time of commit
+               'idcommit'  the commit's id
+               'commit'    the commit's message
+               ========== ================================
+        """
+
+        listcommit = []
+        repo = pygit2.Repository(self.path)
+        last = repo[repo.head.target]
+        for commit in [c for c in repo.walk(last.id)
+                       if timestart <= c.commit_time <= timeend]:
+            listcommit.append({
+                'idcommit': commit.id,
+                'commit': commit.message.rstrip('\n'),
+                'time': commit.commit_time
+            })
+        return listcommit
 
     def close(self):
         """Create a commit of our changes and push it to the remote repo."""
-        self.__exit__()
 
-    def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
-        """Exit a ``with`` block."""
+        # add a commit
+        self.git_commit()
         # git push wen closing
         try:
             self.git_push()
@@ -276,6 +329,11 @@ class Repo:
                 self.git_push()
             except RuntimeError:
                 raise PushError(self)
+
+    def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
+        """Exit a ``with`` block."""
+
+        self.close()
 
 
 class PushError(Exception):
@@ -399,8 +457,8 @@ class FileInRepo:
                 '%Y-%m-%d %H:%M:%S%z').timetuple()
         )
 
-    def gitlog(self, timestart=0, timeend=float('inf'),
-               file_name_in_message=False):
+    def git_log(self, timestart=0, timeend=float('inf'),
+                file_name_in_message=False):
         """Show commits of this file in repo since timestart to timeend
 
         :param timestart: type timestamp UNIX
@@ -409,10 +467,10 @@ class FileInRepo:
         :return: list of all versions of the file in all commit, type of element is dictionaire
 
         An exemple of usage : \n
-        file = repository.open('file') \n
-        version in file.gitlog() \n
-        version[key]\n
-        All values of key: \n
+        ``f = repository.open('file')`` \n
+        ``version in f.git_log()`` \n
+        ``version[key]``\n
+        All values of ``key``: \n
         ========== ================================
            KEY              Description
         ========== ================================
@@ -454,7 +512,7 @@ class FileInRepo:
                 idtemp = entry.id
                 listcommit.append({
                     'idcommit': commit.id,
-                    'commit': commit.message,
+                    'commit': commit.message.rstrip('\n'),
                     'id': entry.id,
                     'name': entry.name,
                     'data': repository[entry.id].data,
@@ -486,24 +544,26 @@ class FileInRepo:
         """
         repository = pygit2.Repository(self.path_repo)
         last = repository[repository.head.target]
-        for commit in repository.walk(last.id, pygit2.GIT_SORT_TIME):
+        for commit in repository.walk(last.id):
             tree = commit.tree
             entry = self.entry_in_commit(tree)
             if entry:
                 return {
                     'idcommit': commit.id,
-                    'commit': commit.message,
+                    'commit': commit.message.rstrip('\n'),
                     'id': entry.id,
                     'name': entry.name,
                     'data': repository[entry.id].data,
                     'time': commit.commit_time
                 }
 
-    def commit(self, message):
+    def git_commit(self, message=''):
         """A commit will be added when this file in repository modified
         call this function if you want a another commit before the commit automatic.
         """
         # commentaire = '"' + message + '"'
+        if message == '':
+            message = self.commit_message
         logging.info('From gitkv : Commit file ' + self.filename)
         # git add .
         run_cmd(['git', 'add', '.'], cwd=self.path_repo)
@@ -524,7 +584,7 @@ class FileInRepo:
         A commit will be added when this file in repository modified
         Call this function if you want change the commit's message default.
 
-        :param message: string, message for commit
+        :param message: string, message commit
         """
         self.commit_message = message
 
@@ -553,7 +613,6 @@ class FileInRepo:
         # add commit in repo if the file is changed
         # close for save file in directory after write
         self.object_io.close()
-        self.commit(self.commit_message)
 
 
 if __name__ == "__main__":
