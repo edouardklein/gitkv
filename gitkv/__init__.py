@@ -542,17 +542,15 @@ class FileInRepo:
                             if timestart <= c.commit_time <= timeend]
         for commit in eligible_commits:
             entry = self._entry_in_commit(commit.tree)
-            if entry is not None:
-                current_id = entry.id
-                if accept(self.filename, commit.message, current_id, old_id):
-                    old_id = current_id
-                    answer.append({
-                        'idcommit': commit.id,
-                        'commit': commit.message,
-                        'id': entry.id,
-                        'name': entry.name,
-                        'data': repository[entry.id].data,
-                        'time': commit.commit_time})
+            if entry is not None and accept(self.filename, commit.message, entry.id, old_id):
+                old_id = entry.id
+                answer.append({
+                    'idcommit': commit.id,
+                    'commit': commit.message,
+                    'id': entry.id,
+                    'name': entry.name,
+                    'data': repository[entry.id].data,
+                    'time': commit.commit_time})
         answer.reverse()
         return answer
 
@@ -562,6 +560,7 @@ class FileInRepo:
         :return : a dict, None if file have not commit.
 
         The recent comit is a dict
+
         ========== ================================
            KEY              Description
         ========== ================================
