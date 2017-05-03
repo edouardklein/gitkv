@@ -58,7 +58,6 @@ import tempfile
 import datetime
 import time
 import importlib
-import shlex
 import os
 
 logging.basicConfig(level=logging.DEBUG)
@@ -107,6 +106,7 @@ class open:
             :return: a stream-like object"""
         self.filename = filename
         self.repo = Repo(url)
+        self.repo.commit_message = "GitKV: " + self.filename
         self.fir = self.repo.open(filename, *args, **kwargs)
 
     def __getattr__(self, item):
@@ -118,7 +118,6 @@ class open:
 
         see :py:func:`Repo.close` and :py:func:`FileInRepo.close`"""
         self.fir.close()
-        self.repo.commit_message = "GitKV: " + self.filename
         self.repo.close()
 
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
@@ -272,7 +271,8 @@ class Repo:
             pass
 
     def git_log(self, timestart=0, timeend=float('inf')):
-        """Return the list of commits from timestart to timeend
+        """Return the list of commits from timestart to timeend,
+        sorted from most recent to most ancient.
 
                :param timestart, UNIX timestamp
                :param timeend, UNIX timestamp
@@ -293,8 +293,9 @@ class Repo:
 
         listcommit = []
         repo = pygit2.Repository(self.path)
-        last = repo[repo.head.target]
-        for commit in [c for c in repo.walk(last.id)
+        last_id = repo.head.target
+        for commit in [c for c in repo.walk(
+                last_id, pygit2.GIT_SORT_TOPOLOGICAL | pygit2.GIT_SORT_TIME)
                        if timestart <= c.commit_time <= timeend]:
             listcommit.append({
                 'idcommit': commit.id,
@@ -404,7 +405,7 @@ class FileInRepo:
     """
 
     def __enter__(self):
-        """Enter with block"""
+        """Start a ``with`` block."""
         return self
 
     def __init__(self, filename, repo_path, *args, **kwargs):
@@ -448,7 +449,61 @@ class FileInRepo:
 
     def git_log(self, timestart=0, timeend=float('inf'),
                 file_name_in_message=False):
-        """Return a list of all commits that modified this instance's file.
+        """Return a list of all commits that modified this instance's file,
+        sorted from most recent to most ancient
+
+    >>> # ... test setup ...
+    >>> import tempfile
+    >>> import pygit2
+    >>> tmpdir = tempfile.TemporaryDirectory()
+    >>> import io
+    >>> # The repo url can be anything that git recognizes
+    >>> # as a git repo
+    >>> repo_url = tmpdir.name  # Here it is a local path
+    >>> gitrepo = pygit2.init_repository(repo_url, True)
+    >>> # ... /test setup ...
+    >>>
+    >>> import gitkv
+    >>> # A file have several changes
+    >>> with gitkv.open(repo_url, 'yourfile', 'w') as f:
+    ...     f.write('Your content.')
+    13
+    >>> with gitkv.open(repo_url, 'yourfile', 'w') as f:
+    ...     f.repo.commit_message = 'Edit content'
+    ...     f.write('Content edited.')
+    15
+    >>> with gitkv.open(repo_url, 'yourfile', 'a') as f:
+    ...     f.repo.commit_message = 'Add a line'
+    ...     f.write('Content added.')
+    14
+    >>> # git_log() can be called to get its specific history
+    >>> with gitkv.open(repo_url, 'yourfile', 'r') as f:
+    ...     [l['commit'].strip() for l in f.git_log()]
+    ['Add a line', 'Edit content', 'GitKV: yourfile']
+    >>> with gitkv.Repo(repo_url) as repo:
+    ...     # A file in this repo but is not created by gitkv
+    ...     with io.open(os.path.join(repo.path,'file_from_io'),'w') as f:
+    ...         f.write('File created from module io.')
+    ...     # this file can be read but it have not yet its history
+    ...     with repo.open('file_from_io') as f:
+    ...         print(f.read())
+    ...         [l['commit'].strip() for l in f.git_log()] == []
+    ...     repo.commit_message = 'create file_from_io'
+    ... # When exiting the with block, a commit is created.
+    28
+    File created from module io.
+    True
+    >>> # A commit for this file exist now
+    >>> with gitkv.open(repo_url, 'file_from_io') as f:
+    ...     [l['commit'].strip() for l in f.git_log()]
+    ['create file_from_io']
+    >>> # All history in this repository in order from most recent to most ancient
+    >>> [l['commit'].strip() for l in gitkv.Repo(repo_url).git_log()]
+    ['create file_from_io', 'Add a line', 'Edit content', 'GitKV: yourfile', 'GitKV: initial commit']
+    >>> # A history of a file is only the moment when it is changed
+    >>> with gitkv.open(repo_url, 'yourfile', 'r') as f:
+    ...     [l['commit'].strip() for l in f.git_log()]
+    ['Add a line', 'Edit content', 'GitKV: yourfile']
 
         :param timestart: UNIX timestamp, optional
         :param timeend: UNIX timestamp, optional
@@ -481,18 +536,16 @@ class FileInRepo:
                 """Accept a commit if it changed our file's id."""
                 return current_id != old_id
 
-        current_id = None
-        eligible_commits = [c for c in repository.walk(last_id,
-                                                       pygit2.GIT_SORT_TIME |
-                                                       pygit2.GIT_SORT_REVERSE)
-                            # sorted from most ancient to most recent
+        old_id = None
+        eligible_commits = [c for c in repository.walk(
+            last_id, pygit2.GIT_SORT_TOPOLOGICAL | pygit2.GIT_SORT_TIME | pygit2.GIT_SORT_REVERSE)
                             if timestart <= c.commit_time <= timeend]
         for commit in eligible_commits:
             entry = self._entry_in_commit(commit.tree)
-            old_id = current_id
             if entry is not None:
                 current_id = entry.id
                 if accept(self.filename, commit.message, current_id, old_id):
+                    old_id = current_id
                     answer.append({
                         'idcommit': commit.id,
                         'commit': commit.message,
@@ -500,19 +553,15 @@ class FileInRepo:
                         'name': entry.name,
                         'data': repository[entry.id].data,
                         'time': commit.commit_time})
+        answer.reverse()
         return answer
 
-
     def version_recent(self):
-        """Extract information of the recent version of file
+        """Return the last commit that modified this instance's file.
 
-        :return : object dictionnaire
+        :return : a dict, None if file have not commit.
 
-        Exemple of usage:
-
-        version_recent()[key]
-
-        All value of key: \n
+        The recent comit is a dict
         ========== ================================
            KEY              Description
         ========== ================================
@@ -524,31 +573,21 @@ class FileInRepo:
         'commit'    the commit's message
         ========== ================================
         """
-        repository = pygit2.Repository(self.repo_path)
-        last = repository[repository.head.target]
-        for commit in repository.walk(last.id):
-            tree = commit.tree
-            entry = self._entry_in_commit(tree)
-            if entry:
-                return {
-                    'idcommit': commit.id,
-                    'commit': commit.message.rstrip('\n'),
-                    'id': entry.id,
-                    'name': entry.name,
-                    'data': repository[entry.id].data,
-                    'time': commit.commit_time
-                }
 
-    def git_commit(self, message=''):
-        """A commit will be added when this file in repository modified
-        call this function if you want a another commit before the commit automatic.
+        try:
+            return self.git_log()[0]
+        except:
+            return None
+
+    def git_commit(self, message=None):
+        """ Create a commit
         """
         # commentaire = '"' + message + '"'
-        if message == '':
+        if message is None:
             message = self.commit_message
         logging.info('From gitkv : Commit file ' + self.filename)
         # git add .
-        run_cmd(['git', 'add', '.'], cwd=self.repo_path)
+        run_cmd(['git', 'add', self.filename], cwd=self.repo_path)
         # git commit
         try:
             output = subprocess.check_output(
@@ -574,16 +613,14 @@ class FileInRepo:
                 return ModuleWrapper(item, add_stream_as_last_arg)
 
     def close(self):
-        """Close the stream object, a commit automatic will execute when the
-        file is changed.
+        """Close the stream object
         """
-        self.__exit__()
+        self.fd.close()
 
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
-        """Exit bloc with, call all function necessary for closure"""
-        # add commit in repo if the file is changed
-        # close for save file in directory after write
-        self.fd.close()
+        """Exit a ``with`` block."""
+        # close stream object
+        self.close()
 
 
 if __name__ == "__main__":
