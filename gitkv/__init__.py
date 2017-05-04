@@ -61,6 +61,8 @@ import importlib
 import os
 
 logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger('gitkv')
+logger.setLevel(level=logging.DEBUG)
 
 __version__ = '0.0.1'
 
@@ -70,10 +72,10 @@ def run_cmd(cmd, **kwargs):  # FIXED function
     try:
         output = subprocess.check_output(cmd, stderr=subprocess.STDOUT,
                                          **kwargs).decode('utf-8')
-        logging.debug('{}\n\t{}'.format(' '.join(cmd),
+        logger.debug('{}\n\t{}'.format(' '.join(cmd),
                                         '\n\t'.join(output.split('\n'))))
     except subprocess.CalledProcessError as e:
-        logging.error('{}\n{}'.format(' '.join(cmd), e.output))
+        logger.error('{}\n{}'.format(' '.join(cmd), e.output))
         raise RuntimeError
 
 
@@ -165,7 +167,7 @@ class Repo:
         """Start a ``with`` block."""
         return self
 
-    def initial_commit_if_empty(self):  # FIXED: function
+    def initial_commit_if_empty(self):
         '''Commit an empty .gitignore file if the given repo is empty'''
 
         if not self.repo.is_empty:
@@ -197,7 +199,7 @@ class Repo:
         if self.url is None:
             self.tmp_repo_dir = tempfile.TemporaryDirectory()
             self.url = self.tmp_repo_dir.name + '/'
-            logging.info('Initialazing a temporary empty git repo: '
+            logger.info('Initialazing a temporary empty git repo: '
                          + self.url)
             pygit2.init_repository(self.url, True)
 
@@ -219,14 +221,14 @@ class Repo:
             to the 'true' ``open`` function.
         :return: a stream-like object
         """
-        logging.debug('Opening file ' + filename)
+        logger.debug('Opening file ' + filename)
         return FileInRepo(filename, self.path, *args, **kwargs)
 
     def __getattr__(self, item):
         """Call e.g. ``self.m.f(a, b, c)`` as ``self.m.f(self.path+a, b, c)``.
 
         Import all modules between self and f."""
-        logging.debug("Repo getattr: " + item)
+        logger.debug("Repo getattr: " + item)
 
         def prepend_path_to_first_arg(*args):
             return [self.path + args[0]] + list(args[1:])
@@ -325,7 +327,7 @@ class Repo:
 
 
 class PushError(Exception):
-    """Raised when gitkv can't push in a remote repository because a conflict"""
+    """Raised when gitkv can't push in a remote repository because a conflict."""
     pass
 
 
@@ -342,21 +344,21 @@ class ModuleWrapper:
             this function before being given to item if item is callable
         """
 
-        logging.debug("ModuleWrapper: " + item)
+        logger.debug("ModuleWrapper: " + item)
         self.module_name = item
         self.module = importlib.import_module(item)
         self.arg_transform = arg_transform
 
     def func_wrapper(self, func):
         """Return a wrapper over func that changes the arguments."""
-        logging.debug("ModuleWrapper({}).{}".format(
+        logger.debug("ModuleWrapper({}).{}".format(
             self.module_name,
             func))
 
         def wrapped_func(*args, f=func,
                          ft=self.arg_transform, **kwargs):
             """Actually call f with modified arguments"""
-            logging.debug("ModuleWrapper({}).{}({})".format(
+            logger.debug("ModuleWrapper({}).{}({})".format(
                 self.module_name,
                 func, *ft(*args)))
             return f(*ft(*args), **kwargs)
@@ -365,10 +367,10 @@ class ModuleWrapper:
 
     def __getattr__(self, attr):
         """Dynamically wrap a module or wrap a function"""
-        logging.debug("ModuleWrapper({}).gettattr({})".format(self.module_name,
+        logger.debug("ModuleWrapper({}).gettattr({})".format(self.module_name,
                                                               attr))
         item_in_module = self.module.__getattribute__(attr)
-        logging.debug("ModuleWrapper: {}".format(item_in_module))
+        logger.debug("ModuleWrapper: {}".format(item_in_module))
         if callable(item_in_module):
             return self.func_wrapper(item_in_module)
         else:
@@ -419,7 +421,7 @@ class FileInRepo:
         self.filename = filename
         self.fd = io.open(os.path.join(self.repo_path, self.filename),
                           *args, **kwargs)
-        logging.debug('FileInRepo open ' + self.filename)
+        logger.debug('FileInRepo open ' + self.filename)
 
     def __iter__(self):
         """Iterator for FileInRepo"""
@@ -508,7 +510,8 @@ class FileInRepo:
         :param timestart: UNIX timestamp, optional
         :param timeend: UNIX timestamp, optional
         :param file_name_in_message: boolean, only return commits whose message
-        contains the filename
+            contains the filename.
+        :return: list of commits.
 
         A commit is a dict:
 
@@ -523,6 +526,7 @@ class FileInRepo:
         'commit'    the commit's message
         ========== ================================
         """
+
         repository = pygit2.Repository(self.repo_path)
         last_id = repository.head.target
         answer = []
@@ -557,9 +561,9 @@ class FileInRepo:
     def version_recent(self):
         """Return the last commit that modified this instance's file.
 
-        :return : a dict, None if file have not commit.
+        :return: a dict, None if file have not commit.
 
-        The recent comit is a dict
+        The recent commit is a dict
 
         ========== ================================
            KEY              Description
@@ -584,7 +588,7 @@ class FileInRepo:
         # commentaire = '"' + message + '"'
         if message is None:
             message = self.commit_message
-        logging.info('From gitkv : Commit file ' + self.filename)
+        logger.debug('From gitkv : Commit file ' + self.filename)
         # git add .
         run_cmd(['git', 'add', self.filename], cwd=self.repo_path)
         # git commit
@@ -592,10 +596,10 @@ class FileInRepo:
             output = subprocess.check_output(
                 ['git', 'commit', '-m', message],
                 cwd=self.repo_path)
-            logging.debug('{}\n\t{}'.format('git commit:\n\t',
+            logger.debug('{}\n\t{}'.format('git commit:\n\t',
                                             output))
         except subprocess.CalledProcessError as e:
-            logging.debug(e.output)
+            logger.debug(e.output)
 
     def __getattr__(self, item):
         """Search attribute not defined in this class"""

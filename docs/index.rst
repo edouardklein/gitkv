@@ -7,7 +7,7 @@ Welcome to gitkv's documentation!
 =================================
 
 .. automodule:: gitkv
-    :members: open, Repo, FileInRepo
+    :members: open, Repo, FileInRepo, PushError
     :special-members: __init__
 
 
