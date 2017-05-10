@@ -67,13 +67,13 @@ logger.setLevel(level=logging.DEBUG)
 __version__ = '0.0.1'
 
 
-def run_cmd(cmd, **kwargs):  # FIXED function
+def run_cmd(cmd, **kwargs):
     '''Run a command, log it, raise on error.'''
     try:
         output = subprocess.check_output(cmd, stderr=subprocess.STDOUT,
                                          **kwargs).decode('utf-8')
         logger.debug('{}\n\t{}'.format(' '.join(cmd),
-                                        '\n\t'.join(output.split('\n'))))
+                                       '\n\t'.join(output.split('\n'))))
     except subprocess.CalledProcessError as e:
         logger.error('{}\n{}'.format(' '.join(cmd), e.output))
         raise RuntimeError
@@ -200,7 +200,7 @@ class Repo:
             self.tmp_repo_dir = tempfile.TemporaryDirectory()
             self.url = self.tmp_repo_dir.name + '/'
             logger.info('Initialazing a temporary empty git repo: '
-                         + self.url)
+                        + self.url)
             pygit2.init_repository(self.url, True)
 
         self.tmp_dir = tempfile.TemporaryDirectory()
@@ -274,15 +274,13 @@ class Repo:
 
     def git_log(self, timestart=0, timeend=float('inf')):
         """Return the list of commits from timestart to timeend,
-        sorted from most recent to most ancient.
+        sorted ``from most recent to most ancient``.
 
                :param timestart, UNIX timestamp
                :param timeend, UNIX timestamp
                :return: list of commits,
 
-
-          A commit is a dict:
-
+        A commit is a dict:
 
         ========== ================================
         KEY              Description
@@ -368,7 +366,7 @@ class ModuleWrapper:
     def __getattr__(self, attr):
         """Dynamically wrap a module or wrap a function"""
         logger.debug("ModuleWrapper({}).gettattr({})".format(self.module_name,
-                                                              attr))
+                                                             attr))
         item_in_module = self.module.__getattribute__(attr)
         logger.debug("ModuleWrapper: {}".format(item_in_module))
         if callable(item_in_module):
@@ -452,7 +450,7 @@ class FileInRepo:
     def git_log(self, timestart=0, timeend=float('inf'),
                 file_name_in_message=False):
         """Return a list of all commits that modified this instance's file,
-        sorted from most recent to most ancient
+        sorted ``from most recent to most ancient``.
 
     >>> # ... test setup ...
     >>> import tempfile
@@ -485,15 +483,15 @@ class FileInRepo:
     >>> with gitkv.Repo(repo_url) as repo:
     ...     # A file in this repo but is not created by gitkv
     ...     with io.open(os.path.join(repo.path,'file_from_io'),'w') as f:
-    ...         f.write('File created from module io.')
+    ...         f.write('File created by module io.')
     ...     # this file can be read but it have not yet its history
     ...     with repo.open('file_from_io') as f:
     ...         print(f.read())
     ...         [l['commit'].strip() for l in f.git_log()] == []
     ...     repo.commit_message = 'create file_from_io'
     ... # When exiting the with block, a commit is created.
-    28
-    File created from module io.
+    26
+    File created by module io.
     True
     >>> # A commit for this file exist now
     >>> with gitkv.open(repo_url, 'file_from_io') as f:
@@ -502,7 +500,7 @@ class FileInRepo:
     >>> # All history in this repository in order from most recent to most ancient
     >>> [l['commit'].strip() for l in gitkv.Repo(repo_url).git_log()]
     ['create file_from_io', 'Add a line', 'Edit content', 'GitKV: yourfile', 'GitKV: initial commit']
-    >>> # A history of a file is only the moment when it is changed
+    >>> # A history of a file show only commits when it is changed
     >>> with gitkv.open(repo_url, 'yourfile', 'r') as f:
     ...     [l['commit'].strip() for l in f.git_log()]
     ['Add a line', 'Edit content', 'GitKV: yourfile']
@@ -597,7 +595,7 @@ class FileInRepo:
                 ['git', 'commit', '-m', message],
                 cwd=self.repo_path)
             logger.debug('{}\n\t{}'.format('git commit:\n\t',
-                                            output))
+                                           output))
         except subprocess.CalledProcessError as e:
             logger.debug(e.output)
 
