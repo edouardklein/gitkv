@@ -237,7 +237,7 @@ class Repo:
     def list_files(self, id_commit=None):
         """List all files in repo in a commit."""
         for entry in (self.repo.get(id_commit) if id_commit is not None
-                      else self.last_commit()).tree:
+                      else self.git_log()[0]).tree:
             yield entry.name
 
     def __iter__(self):
