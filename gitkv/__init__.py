@@ -15,7 +15,6 @@
 >>> import gitkv
 >>> with gitkv.open(repo_url, 'yourfile', 'w') as f:
 ...     f.write('Your content.')
-...     # commit automatic "GitKv"
 13
 >>> # When exiting the with block, a commit is created.
 >>> # Later...
@@ -43,11 +42,11 @@
 ...     f.read()
 'My content.Additional content.'
 >>> # A repo's history is accessible with the git_log() function
->>> [l['commit'].strip() for l in gitkv.Repo(repo_url).git_log()]
+>>> [c.message.strip() for c in gitkv.Repo(repo_url).git_log()]
 ['Multiple edits', 'GitKV: yourfile', 'GitKV: initial commit']
 >>> # Which can be called on a file to get its specific history
 >>> with gitkv.open(repo_url, 'anotherfile') as f:
-...     [l['commit'].strip() for l in f.git_log()]
+...     [c.message.strip() for c in f.git_log()]
 ['Multiple edits']
 """
 import io
@@ -235,11 +234,6 @@ class Repo:
 
         return ModuleWrapper(item, prepend_path_to_first_arg)
 
-    def last_commit(self):
-        """Return the last commit"""
-        return self.repo.head.get_object()  # Assume HEAD always point to the
-        # last commit, as it should because we are the owner of our local repo
-
     def list_files(self, id_commit=None):
         """List all files in repo in a commit."""
         for entry in (self.repo.get(id_commit) if id_commit is not None
@@ -280,29 +274,13 @@ class Repo:
                :param timeend, UNIX timestamp
                :return: list of commits,
 
-        A commit is a dict:
-
-        ========== ================================
-        KEY              Description
-        ========== ================================
-        'time'      time of commit
-        'idcommit'  the commit's id
-        'commit'    the commit's message
-        ========== ================================
+        A commit is a
+        `pygit2 Commit object <http://www.pygit2.org/objects.html#commits>`_.
         """
-
-        listcommit = []
         repo = pygit2.Repository(self.path)
-        last_id = repo.head.target
-        for commit in [c for c in repo.walk(
-                last_id, pygit2.GIT_SORT_TOPOLOGICAL | pygit2.GIT_SORT_TIME)
-                       if timestart <= c.commit_time <= timeend]:
-            listcommit.append({
-                'idcommit': commit.id,
-                'commit': commit.message.rstrip('\n'),
-                'time': commit.commit_time
-            })
-        return listcommit
+        flags = pygit2.GIT_SORT_TOPOLOGICAL | pygit2.GIT_SORT_TIME
+        return [c for c in repo.walk(repo.head.target, flags)
+                if timestart <= c.commit_time <= timeend]
 
     def close(self):
         """Create a commit of our changes and push it to the remote repo."""
@@ -381,7 +359,7 @@ class FileInRepo:
 
     Some calls can be made within the context of the
     FileInRepo object, with automatic module importing:\n
-    Exemple with json module:
+    For example with json module:
 
     >>> # ... test setup ...
     >>> # For exemple, a content type json as content_json
@@ -421,10 +399,6 @@ class FileInRepo:
                           *args, **kwargs)
         logger.debug('FileInRepo open ' + self.filename)
 
-    def __iter__(self):
-        """Iterator for FileInRepo"""
-        return self.fd.__iter__()
-
     def _entry_in_commit(self, tree):
         """Find the first entry in tree whose name is self.filename
 
@@ -450,60 +424,7 @@ class FileInRepo:
     def git_log(self, timestart=0, timeend=float('inf'),
                 file_name_in_message=False):
         """Return a list of all commits that modified this instance's file,
-        sorted ``from most recent to most ancient``.
-
-    >>> # ... test setup ...
-    >>> import tempfile
-    >>> import pygit2
-    >>> tmpdir = tempfile.TemporaryDirectory()
-    >>> import io
-    >>> # The repo url can be anything that git recognizes
-    >>> # as a git repo
-    >>> repo_url = tmpdir.name  # Here it is a local path
-    >>> gitrepo = pygit2.init_repository(repo_url, True)
-    >>> # ... /test setup ...
-    >>>
-    >>> import gitkv
-    >>> # A file have several changes
-    >>> with gitkv.open(repo_url, 'yourfile', 'w') as f:
-    ...     f.write('Your content.')
-    13
-    >>> with gitkv.open(repo_url, 'yourfile', 'w') as f:
-    ...     f.repo.commit_message = 'Edit content'
-    ...     f.write('Content edited.')
-    15
-    >>> with gitkv.open(repo_url, 'yourfile', 'a') as f:
-    ...     f.repo.commit_message = 'Add a line'
-    ...     f.write('Content added.')
-    14
-    >>> # git_log() can be called to get its specific history
-    >>> with gitkv.open(repo_url, 'yourfile', 'r') as f:
-    ...     [l['commit'].strip() for l in f.git_log()]
-    ['Add a line', 'Edit content', 'GitKV: yourfile']
-    >>> with gitkv.Repo(repo_url) as repo:
-    ...     # A file in this repo but is not created by gitkv
-    ...     with io.open(os.path.join(repo.path,'file_from_io'),'w') as f:
-    ...         f.write('File created by module io.')
-    ...     # this file can be read but it have not yet its history
-    ...     with repo.open('file_from_io') as f:
-    ...         print(f.read())
-    ...         [l['commit'].strip() for l in f.git_log()] == []
-    ...     repo.commit_message = 'create file_from_io'
-    ... # When exiting the with block, a commit is created.
-    26
-    File created by module io.
-    True
-    >>> # A commit for this file exist now
-    >>> with gitkv.open(repo_url, 'file_from_io') as f:
-    ...     [l['commit'].strip() for l in f.git_log()]
-    ['create file_from_io']
-    >>> # All history in this repository in order from most recent to most ancient
-    >>> [l['commit'].strip() for l in gitkv.Repo(repo_url).git_log()]
-    ['create file_from_io', 'Add a line', 'Edit content', 'GitKV: yourfile', 'GitKV: initial commit']
-    >>> # A history of a file show only commits when it is changed
-    >>> with gitkv.open(repo_url, 'yourfile', 'r') as f:
-    ...     [l['commit'].strip() for l in f.git_log()]
-    ['Add a line', 'Edit content', 'GitKV: yourfile']
+        sorted from most recent to most ancient.
 
         :param timestart: UNIX timestamp, optional
         :param timeend: UNIX timestamp, optional
@@ -511,74 +432,32 @@ class FileInRepo:
             contains the filename.
         :return: list of commits.
 
-        A commit is a dict:
+        A commit is a
+        `pygit2 Commit object <http://www.pygit2.org/objects.html#commits>`_.
 
-        ========== ================================
-           KEY              Description
-        ========== ================================
-        'name'      the entry's name (file's name)
-        'id'        entry' id
-        'time'      time of commit
-        'data'      binary content of the file for this commit
-        'idcommit'  the commit's id
-        'commit'    the commit's message
-        ========== ================================
         """
+        def safe_blame(repo, path, newest_commit):
+            "Blame a commit for a file, return [] if it does not exist"
+            try:
+                return repo.blame(path, newest_commit=newest_commit)
+            except KeyError:  # path did not exist in newest_commit
+                return []
 
-        repository = pygit2.Repository(self.repo_path)
-        last_id = repository.head.target
-        answer = []
-
+        repo = pygit2.Repository(self.repo_path)
+        flags = pygit2.GIT_SORT_TOPOLOGICAL | pygit2.GIT_SORT_TIME
+        sorted_commit_ids = [c.hex for c in repo.walk(repo.head.target, flags)
+                             if timestart <= c.commit_time < timeend]
         if file_name_in_message:
-            def accept(filename, message, current_id, old_id):
-                """Accept a commit if our filename is in the message."""
-                return self.filename in message
+            blamed_ids = [c for c in sorted_commit_ids if
+                          self.filenmae in repo[c].message]
         else:
-            def accept(filename, message, current_id, old_id):
-                """Accept a commit if it changed our file's id."""
-                return current_id != old_id
-
-        old_id = None
-        eligible_commits = [c for c in repository.walk(
-            last_id, pygit2.GIT_SORT_TOPOLOGICAL | pygit2.GIT_SORT_TIME | pygit2.GIT_SORT_REVERSE)
-                            if timestart <= c.commit_time <= timeend]
-        for commit in eligible_commits:
-            entry = self._entry_in_commit(commit.tree)
-            if entry is not None and accept(self.filename, commit.message, entry.id, old_id):
-                old_id = entry.id
-                answer.append({
-                    'idcommit': commit.id,
-                    'commit': commit.message,
-                    'id': entry.id,
-                    'name': entry.name,
-                    'data': repository[entry.id].data,
-                    'time': commit.commit_time})
-        answer.reverse()
-        return answer
-
-    def version_recent(self):
-        """Return the last commit that modified this instance's file.
-
-        :return: a dict, None if file have not commit.
-
-        The recent commit is a dict
-
-        ========== ================================
-           KEY              Description
-        ========== ================================
-        'name'      the entry's name (file's name)
-        'id'        entry' id
-        'time'      time of commit
-        'data'      content binary of file
-        'idcommit'  the commit's id
-        'commit'    the commit's message
-        ========== ================================
-        """
-
-        try:
-            return self.git_log()[0]
-        except:
-            return None
+            blamed_ids = [i for c in sorted_commit_ids
+                          for i in [h.final_commit_id
+                                    for h in safe_blame(repo,
+                                                        self.filename,
+                                                        repo[c].id)]]
+        return [repo[commit] for commit in sorted_commit_ids
+                if commit in blamed_ids]
 
     def git_commit(self, message=None):
         """ Create a commit
