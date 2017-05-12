@@ -422,14 +422,14 @@ class FileInRepo:
                 '%Y-%m-%d %H:%M:%S%z').timetuple())
 
     def git_log(self, timestart=0, timeend=float('inf'),
-                file_name_in_message=False):
+                custom_filter=None):
         """Return a list of all commits that modified this instance's file,
         sorted from most recent to most ancient.
 
         :param timestart: UNIX timestamp, optional
         :param timeend: UNIX timestamp, optional
-        :param file_name_in_message: boolean, only return commits whose message
-            contains the filename.
+        :param custom_filter: func, optional, filter commits according to an
+            arbitrary criterion
         :return: list of commits.
 
         A commit is a
@@ -447,9 +447,9 @@ class FileInRepo:
         flags = pygit2.GIT_SORT_TOPOLOGICAL | pygit2.GIT_SORT_TIME
         sorted_commit_ids = [c.hex for c in repo.walk(repo.head.target, flags)
                              if timestart <= c.commit_time < timeend]
-        if file_name_in_message:
+        if custom_filter is not None:
             blamed_ids = [c for c in sorted_commit_ids if
-                          self.filenmae in repo[c].message]
+                          custom_filter(c)]
         else:
             blamed_ids = [i for c in sorted_commit_ids
                           for i in [h.final_commit_id
