@@ -46,7 +46,7 @@
 ['Multiple edits', 'GitKV: yourfile', 'GitKV: initial commit']
 >>> # Which can be called on a file to get its specific history
 >>> with gitkv.open(repo_url, 'anotherfile') as f:
-...     [c.message.strip() for c in f.git_log()]
+...     [c.message.strip() for c in f.git_log()]  #TERTRTRTRTER
 ['Multiple edits']
 """
 import io
@@ -59,9 +59,8 @@ import time
 import importlib
 import os
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('gitkv')
-logger.setLevel(level=logging.DEBUG)
+logger.setLevel(level=logging.INFO)
 
 __version__ = '0.0.1'
 
@@ -119,7 +118,7 @@ class open:
 
         see :py:func:`Repo.close` and :py:func:`FileInRepo.close`"""
         self.fir.close()
-        self.repo.close()
+        self.repo.save()
 
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
         """"Exit a ``with`` block."""
@@ -282,7 +281,7 @@ class Repo:
         return [c for c in repo.walk(repo.head.target, flags)
                 if timestart <= c.commit_time <= timeend]
 
-    def close(self):
+    def save(self):
         """Create a commit of our changes and push it to the remote repo."""
         # add a commit
         self.git_commit()
@@ -299,7 +298,7 @@ class Repo:
 
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
         """Exit a ``with`` block."""
-        self.close()
+        self.save()
 
 
 class PushError(Exception):
@@ -408,6 +407,22 @@ class FileInRepo:
         for entry in tree:
             if entry.name == self.filename:
                 return entry
+        return None
+
+    def content(self, id_commit=None):
+        """Return content binary of file at a commit
+
+        :param id_commit: type str, commit hex.
+             Or type _pygit2.Oid (pygit2 commit.id objet
+            <http://www.pygit2.org/objects.html#commits>).
+             If id_commit=None, return the most recent version
+        :return: binary
+        """
+
+        repo = pygit2.Repository(self.repo_path)
+        commit = repo[id_commit] if id_commit is not None \
+            else self.git_log()[0]
+        return repo[self._entry_in_commit(commit.tree).id].data
 
     def utc_to_timestamp(self, str_utc):
         """Convert a date from UTC to UNIX timestamp
@@ -424,7 +439,7 @@ class FileInRepo:
     def git_log(self, timestart=0, timeend=float('inf'),
                 custom_filter=None):
         """Return a list of all commits that modified this instance's file,
-        sorted from most recent to most ancient.
+        sorted from most recent to most ancient. Using `git blame` method
 
         :param timestart: UNIX timestamp, optional
         :param timeend: UNIX timestamp, optional
@@ -445,19 +460,54 @@ class FileInRepo:
 
         repo = pygit2.Repository(self.repo_path)
         flags = pygit2.GIT_SORT_TOPOLOGICAL | pygit2.GIT_SORT_TIME
-        sorted_commit_ids = [c.hex for c in repo.walk(repo.head.target, flags)
-                             if timestart <= c.commit_time < timeend]
+        sorted_commits = [c for c in repo.walk(repo.head.target, flags)
+                          if timestart <= c.commit_time < timeend]
+        # and self._entry_in_commit(c.tree) is not None]
         if custom_filter is not None:
-            blamed_ids = [c for c in sorted_commit_ids if
+            blamed_ids = [c.id for c in sorted_commits if
                           custom_filter(c)]
         else:
-            blamed_ids = [i for c in sorted_commit_ids
-                          for i in [h.final_commit_id
-                                    for h in safe_blame(repo,
-                                                        self.filename,
-                                                        repo[c].id)]]
-        return [repo[commit] for commit in sorted_commit_ids
-                if commit in blamed_ids]
+            blamed_ids = set([h.final_commit_id
+                              for c_id in [c.id for c in sorted_commits]
+                              for h in safe_blame(repo,
+                                                  self.filename,
+                                                  newest_commit=c_id)])
+        return [commit for commit in sorted_commits
+                if commit.id in blamed_ids]
+
+    def git_log2(self, timestart=0, timeend=float('inf'),
+                 custom_filter=None):
+        """Return a list of all commits that modified this instance's file,
+        sorted from most recent to most ancient.
+
+        :param timestart: UNIX timestamp, optional
+        :param timeend: UNIX timestamp, optional
+        :param custom_filter: func, optional, filter commits according to an
+            arbitrary criterion
+        :return: list of commits.
+
+        A commit is a
+        `pygit2 Commit object <http://www.pygit2.org/objects.html#commits>`_.
+
+        """
+        repo = pygit2.Repository(self.repo_path)
+        flags = pygit2.GIT_SORT_TOPOLOGICAL | pygit2.GIT_SORT_TIME \
+                | pygit2.GIT_SORT_REVERSE
+        sorted_commits = [c for c in repo.walk(repo.head.target, flags)
+                          if timestart <= c.commit_time < timeend
+                          and self._entry_in_commit(c.tree) is not None]
+        if custom_filter is not None:
+            return reversed([c for c in sorted_commits if custom_filter(c)])
+        # else if custom_filter is None
+        old_id = None
+        answer = []
+        for commit in sorted_commits:
+            entry = self._entry_in_commit(commit.tree)
+            if entry is not None and entry.id != old_id:
+                old_id = entry.id
+                answer.append(commit)
+        answer.reverse()
+        return answer
 
     def git_commit(self, message=None):
         """ Create a commit
