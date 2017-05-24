@@ -120,7 +120,7 @@ class open:
 
         see :py:func:`Repo.close` and :py:func:`FileInRepo.close`"""
         self.fir.close()
-        self.repo.save()
+        self.repo.close()
 
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
         """"Exit a ``with`` block."""
@@ -287,7 +287,7 @@ class Repo:
                 if timestart <= c.commit_time <= timeend
                 and custom_filter(c)]
 
-    def save(self):
+    def close(self):
         """Create a commit of our changes and push it to the remote repo."""
         # add a commit
         self.git_commit()
@@ -300,11 +300,11 @@ class Repo:
                 self.git_pull()
                 self.git_push()
             except RuntimeError:
-                raise PushError(self)
+                raise PushError('Conflict when pussing')
 
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
         """Exit a ``with`` block."""
-        self.save()
+        self.close()
 
 
 class PushError(Exception):
@@ -457,6 +457,66 @@ class FileInRepo:
 
         A commit is a
         `pygit2 Commit object <http://www.pygit2.org/objects.html#commits>`_.
+
+        # ... test setup ...
+        >>> import tempfile
+        >>> import pygit2
+        >>> import gitkv
+        >>> tmpdir = tempfile.TemporaryDirectory()
+        >>> # The repo url can be anything that git recognizes
+        >>> # as a git repo
+        >>> repo_url = tmpdir.name  # Here it is a local path
+        >>> gitrepo = pygit2.init_repository(repo_url, True)
+
+        >>> repo_a = gitkv.Repo(repo_url)
+        >>> with repo_a.open('myfile','w') as f:
+        ...     f.write('Create myfile')
+        13
+        >>> repo_a.git_commit('Create myfile')
+        >>> repo_a.close()
+
+        >>> repo_b = gitkv.Repo(repo_url)
+        >>> with repo_b.open('myfile','w') as f:
+        ...     f.write('\\nB write')
+        8
+        >>> repo_b.git_commit('B write')
+        >>> with repo_b.open('otherfile','w') as f:
+        ...     f.write('Create otherfile')
+        16
+        >>> repo_b.git_commit('Create otherfile')
+        >>> repo_b.close()
+        >>> with repo_a.open('myfile','w') as f:
+        ...     f.write('\\nA write')
+        8
+        >>> repo_a.git_commit('A write')
+        >>> # Error because a conflict
+        >>> repo_a.close()
+        Traceback (most recent call last):
+        ...
+        gitkv.PushError: Conflict when pussing
+        >>> # Resolve this conflict
+        >>> with repo_a.open('myfile','w') as f:
+        ...     f.write('Create myfile\\nA write\\nB write')
+        29
+        >>> repo_a.git_commit('Merge')
+        >>> repo_a.close()
+        >>> # ... /test setup ...
+
+        >>> # A commit history like this
+        >>> # 0 <- Master   Merge
+        >>> # |__
+        >>> # |  0          Create otherfile
+        >>> # |  |
+        >>> # |  0          B write
+        >>> # 0__|          A write
+        >>> #    0          Create myfile
+        >>> #    |
+        >>> #    0          GitKV: Initial commit
+
+        # Call git log of myfile
+        >>> with gitkv.open(repo_url,'myfile') as f:
+        ...     [c.message.strip() for c in f.git_log()]
+        ['Merge', 'A write', 'B write', 'Create myfile']
 
         """
         sorted_commits = self.gkvrepo.git_log(timestart, timeend, custom_filter)
