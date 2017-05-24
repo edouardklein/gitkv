@@ -46,7 +46,7 @@
 ['Multiple edits', 'GitKV: yourfile', 'GitKV: initial commit']
 >>> # Which can be called on a file to get its specific history
 >>> with gitkv.open(repo_url, 'anotherfile') as f:
-...     [c.message.strip() for c in f.git_log()]  #TERTRTRTRTER
+...     [c.message.strip() for c in f.git_log()]
 ['Multiple edits']
 """
 import io
@@ -58,6 +58,7 @@ import datetime
 import time
 import importlib
 import os
+import re
 
 logger = logging.getLogger('gitkv')
 logger.setLevel(level=logging.INFO)
@@ -72,6 +73,7 @@ def run_cmd(cmd, **kwargs):
                                          **kwargs).decode('utf-8')
         logger.debug('{}\n\t{}'.format(' '.join(cmd),
                                        '\n\t'.join(output.split('\n'))))
+        return output
     except subprocess.CalledProcessError as e:
         logger.error('{}\n{}'.format(' '.join(cmd), e.output))
         raise RuntimeError
@@ -220,7 +222,7 @@ class Repo:
         :return: a stream-like object
         """
         logger.debug('Opening file ' + filename)
-        return FileInRepo(filename, self.path, *args, **kwargs)
+        return FileInRepo(filename, self, *args, **kwargs)
 
     def __getattr__(self, item):
         """Call e.g. ``self.m.f(a, b, c)`` as ``self.m.f(self.path+a, b, c)``.
@@ -265,13 +267,16 @@ class Repo:
         except:
             pass
 
-    def git_log(self, timestart=0, timeend=float('inf')):
+    def git_log(self, timestart=0, timeend=float('inf'),
+                custom_filter=lambda c: True):
         """Return the list of commits from timestart to timeend,
         sorted ``from most recent to most ancient``.
 
-               :param timestart, UNIX timestamp
-               :param timeend, UNIX timestamp
-               :return: list of commits,
+        :param timestart: UNIX timestamp
+        :param timeend: UNIX timestamp
+        :param custom_filter: func, optional, filter commits according to an
+            arbitrary criterion
+        :return: list of commits,
 
         A commit is a
         `pygit2 Commit object <http://www.pygit2.org/objects.html#commits>`_.
@@ -279,7 +284,8 @@ class Repo:
         repo = pygit2.Repository(self.path)
         flags = pygit2.GIT_SORT_TOPOLOGICAL | pygit2.GIT_SORT_TIME
         return [c for c in repo.walk(repo.head.target, flags)
-                if timestart <= c.commit_time <= timeend]
+                if timestart <= c.commit_time <= timeend
+                and custom_filter(c)]
 
     def save(self):
         """Create a commit of our changes and push it to the remote repo."""
@@ -385,14 +391,15 @@ class FileInRepo:
         """Start a ``with`` block."""
         return self
 
-    def __init__(self, filename, repo_path, *args, **kwargs):
+    def __init__(self, filename, repo_gitkv, *args, **kwargs):
         """Return the context manager.
 
         This class should be instanciated with py:func:`gitkv.open` or
         py:func:`Repo.open`, and not directly.
         """
         self.commit_message = 'GitKV: ' + filename
-        self.repo_path = repo_path
+        self.gkvrepo = repo_gitkv
+        self.repo_path = repo_gitkv.path
         self.filename = filename
         self.fd = io.open(os.path.join(self.repo_path, self.filename),
                           *args, **kwargs)
@@ -436,50 +443,12 @@ class FileInRepo:
                 str_utc,
                 '%Y-%m-%d %H:%M:%S%z').timetuple())
 
-    def git_log(self, timestart=0, timeend=float('inf'),
-                custom_filter=None):
-        """Return a list of all commits that modified this instance's file,
-        sorted from most recent to most ancient. Using `git blame` method
-
-        :param timestart: UNIX timestamp, optional
-        :param timeend: UNIX timestamp, optional
-        :param custom_filter: func, optional, filter commits according to an
-            arbitrary criterion
-        :return: list of commits.
-
-        A commit is a
-        `pygit2 Commit object <http://www.pygit2.org/objects.html#commits>`_.
-
-        """
-        def safe_blame(repo, path, newest_commit):
-            "Blame a commit for a file, return [] if it does not exist"
-            try:
-                return repo.blame(path, newest_commit=newest_commit)
-            except KeyError:  # path did not exist in newest_commit
-                return []
-
-        repo = pygit2.Repository(self.repo_path)
-        flags = pygit2.GIT_SORT_TOPOLOGICAL | pygit2.GIT_SORT_TIME
-        sorted_commits = [c for c in repo.walk(repo.head.target, flags)
-                          if timestart <= c.commit_time < timeend]
-        # and self._entry_in_commit(c.tree) is not None]
-        if custom_filter is not None:
-            blamed_ids = [c.id for c in sorted_commits if
-                          custom_filter(c)]
-        else:
-            blamed_ids = set([h.final_commit_id
-                              for c_id in [c.id for c in sorted_commits]
-                              for h in safe_blame(repo,
-                                                  self.filename,
-                                                  newest_commit=c_id)])
-        return [commit for commit in sorted_commits
-                if commit.id in blamed_ids]
-
-    def git_log2(self, timestart=0, timeend=float('inf'),
-                 custom_filter=None):
+    def git_log(self, *options, timestart=0, timeend=float('inf'),
+                custom_filter=lambda c: True):
         """Return a list of all commits that modified this instance's file,
         sorted from most recent to most ancient.
 
+        :param options : string
         :param timestart: UNIX timestamp, optional
         :param timeend: UNIX timestamp, optional
         :param custom_filter: func, optional, filter commits according to an
@@ -490,24 +459,13 @@ class FileInRepo:
         `pygit2 Commit object <http://www.pygit2.org/objects.html#commits>`_.
 
         """
-        repo = pygit2.Repository(self.repo_path)
-        flags = pygit2.GIT_SORT_TOPOLOGICAL | pygit2.GIT_SORT_TIME \
-                | pygit2.GIT_SORT_REVERSE
-        sorted_commits = [c for c in repo.walk(repo.head.target, flags)
-                          if timestart <= c.commit_time < timeend
-                          and self._entry_in_commit(c.tree) is not None]
-        if custom_filter is not None:
-            return reversed([c for c in sorted_commits if custom_filter(c)])
-        # else if custom_filter is None
-        old_id = None
-        answer = []
-        for commit in sorted_commits:
-            entry = self._entry_in_commit(commit.tree)
-            if entry is not None and entry.id != old_id:
-                old_id = entry.id
-                answer.append(commit)
-        answer.reverse()
-        return answer
+        sorted_commits = self.gkvrepo.git_log(timestart, timeend, custom_filter)
+        command = ['git', 'log'] + list(options) + [self.filename]
+        gitlog_process_output = run_cmd(command, cwd=self.repo_path)
+        gitlog_of_file = [c for c in re.findall('(?<=commit )\w+',
+                                                gitlog_process_output)]
+        return [commit for commit in sorted_commits
+                if commit.hex in gitlog_of_file]
 
     def git_commit(self, message=None):
         """ Create a commit
