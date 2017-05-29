@@ -79,6 +79,23 @@ def run_cmd(cmd, **kwargs):
         raise RuntimeError
 
 
+def utc_to_timestamp(str_utc):
+    """Convert a date from UTC to UNIX timestamp
+
+    :param str_utc: UTC date (i.e : "2017-05-30 09:00:00")
+    :return: int UNIX timestamp (i.e. : 1496127600)
+
+    >>> import gitkv
+    >>> # 09:00:00 AM, Date 30 May 2017
+    >>> gitkv.utc_to_timestamp("2017-05-30 09:00:00") == 1496127600
+    True
+    """
+    return time.mktime(
+        datetime.datetime.strptime(
+            str_utc,
+            '%Y-%m-%d %H:%M:%S').timetuple())
+
+
 class open:
     """Open a file in a repository.
 
@@ -425,23 +442,10 @@ class FileInRepo:
              If id_commit=None, return the most recent version
         :return: binary
         """
-
         repo = pygit2.Repository(self.repo_path)
         commit = repo[id_commit] if id_commit is not None \
             else self.git_log()[0]
         return repo[self._entry_in_commit(commit.tree).id].data
-
-    def utc_to_timestamp(self, str_utc):
-        """Convert a date from UTC to UNIX timestamp
-
-        :param str_utc: UTC date (i.e : "2015-12-10 10:00:00+0000")
-        :return: int UNIX timestamp (i.e. : 1450349553)
-        """
-
-        return time.mktime(
-            datetime.datetime.strptime(
-                str_utc,
-                '%Y-%m-%d %H:%M:%S%z').timetuple())
 
     def git_log(self, *options, timestart=0, timeend=float('inf'),
                 custom_filter=lambda c: True):
@@ -467,7 +471,7 @@ class FileInRepo:
         >>> # as a git repo
         >>> repo_url = tmpdir.name  # Here it is a local path
         >>> gitrepo = pygit2.init_repository(repo_url, True)
-
+        >>> # Simulate a conflict with 2 clones
         >>> repo_a = gitkv.Repo(repo_url)
         >>> with repo_a.open('myfile','w') as f:
         ...     f.write('Create myfile')
