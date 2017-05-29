@@ -48,7 +48,14 @@
 >>> with gitkv.open(repo_url, 'anotherfile') as f:
 ...     [c.message.strip() for c in f.git_log()]
 ['Multiple edits']
+>>> # show the plain content of a file in a commit
+>>> with gitkv.open(repo_url, 'yourfile') as f:
+...     idcommit = [c.id for c in f.git_log()
+...                     if c.message.strip() == 'GitKV: yourfile'][0]
+...     f.show_blob(idcommit).decode('utf-8')
+'Your content.'
 """
+
 import io
 import logging
 import pygit2
@@ -137,7 +144,7 @@ class open:
 
         see :py:func:`Repo.close` and :py:func:`FileInRepo.close`"""
         self.fir.close()
-        self.repo.close()
+        self.repo.remote_sync()
 
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
         """"Exit a ``with`` block."""
@@ -233,8 +240,8 @@ class Repo:
     def open(self, filename, *args, **kwargs):
         """Open a file in this Repo
 
-        :param: filename : the file you want to open.
-        :param: *args, **kwargs : all other arguments are passed as is
+        :param: filename: the file you want to open.
+        :param: \*args, \*\*kwargs: all other arguments are passed as is
             to the 'true' ``open`` function.
         :return: a stream-like object
         """
@@ -292,7 +299,7 @@ class Repo:
         :param timestart: UNIX timestamp
         :param timeend: UNIX timestamp
         :param custom_filter: func, optional, filter commits according to an
-            arbitrary criterion
+             arbitrary criterion
         :return: list of commits,
 
         A commit is a
@@ -304,7 +311,7 @@ class Repo:
                 if timestart <= c.commit_time <= timeend
                 and custom_filter(c)]
 
-    def close(self):
+    def remote_sync(self):
         """Create a commit of our changes and push it to the remote repo."""
         # add a commit
         self.git_commit()
@@ -317,11 +324,11 @@ class Repo:
                 self.git_pull()
                 self.git_push()
             except RuntimeError:
-                raise PushError('Conflict when pussing')
+                raise PushError('Conflict when pusshing')
 
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
         """Exit a ``with`` block."""
-        self.close()
+        self.remote_sync()
 
 
 class PushError(Exception):
@@ -433,7 +440,7 @@ class FileInRepo:
                 return entry
         return None
 
-    def content(self, id_commit=None):
+    def show_blob(self, id_commit=None):
         """Return content binary of file at a commit
 
         :param id_commit: type str, commit hex.
@@ -452,20 +459,22 @@ class FileInRepo:
         """Return a list of all commits that modified this instance's file,
         sorted from most recent to most ancient.
 
-        :param options : string
+        :param options: string
         :param timestart: UNIX timestamp, optional
         :param timeend: UNIX timestamp, optional
-        :param custom_filter: func, optional, filter commits according to an
-            arbitrary criterion
+        :param custom_filter: func, optional, filter commits according
+            to an arbitrary criterion
+
         :return: list of commits.
 
         A commit is a
         `pygit2 Commit object <http://www.pygit2.org/objects.html#commits>`_.
 
-        # ... test setup ...
+        >>> # ... test setup ...
         >>> import tempfile
         >>> import pygit2
         >>> import gitkv
+        >>> import time
         >>> tmpdir = tempfile.TemporaryDirectory()
         >>> # The repo url can be anything that git recognizes
         >>> # as a git repo
@@ -477,8 +486,7 @@ class FileInRepo:
         ...     f.write('Create myfile')
         13
         >>> repo_a.git_commit('Create myfile')
-        >>> repo_a.close()
-
+        >>> repo_a.remote_sync()
         >>> repo_b = gitkv.Repo(repo_url)
         >>> with repo_b.open('myfile','w') as f:
         ...     f.write('\\nB write')
@@ -488,36 +496,38 @@ class FileInRepo:
         ...     f.write('Create otherfile')
         16
         >>> repo_b.git_commit('Create otherfile')
-        >>> repo_b.close()
+        >>> repo_b.remote_sync()
         >>> with repo_a.open('myfile','w') as f:
         ...     f.write('\\nA write')
         8
+        >>> time.sleep(1)
         >>> repo_a.git_commit('A write')
         >>> # Error because a conflict
-        >>> repo_a.close()
+        >>> repo_a.remote_sync()
         Traceback (most recent call last):
         ...
-        gitkv.PushError: Conflict when pussing
+        gitkv.PushError: Conflict when pusshing
         >>> # Resolve this conflict
         >>> with repo_a.open('myfile','w') as f:
         ...     f.write('Create myfile\\nA write\\nB write')
         29
         >>> repo_a.git_commit('Merge')
-        >>> repo_a.close()
+        >>> repo_a.remote_sync()
         >>> # ... /test setup ...
 
         >>> # A commit history like this
         >>> # 0 <- Master   Merge
         >>> # |__
+        >>> # 0  |          A write
         >>> # |  0          Create otherfile
         >>> # |  |
         >>> # |  0          B write
-        >>> # 0__|          A write
+        >>> # |__|
         >>> #    0          Create myfile
         >>> #    |
         >>> #    0          GitKV: Initial commit
 
-        # Call git log of myfile
+        >>> # Call git log of myfile
         >>> with gitkv.open(repo_url,'myfile') as f:
         ...     [c.message.strip() for c in f.git_log()]
         ['Merge', 'A write', 'B write', 'Create myfile']
