@@ -290,8 +290,7 @@ class Repo:
         except:
             pass
 
-    def git_log(self, *options,
-                custom_filter=lambda c: True):
+    def git_log(self, *options, custom_filter=lambda c: True):
         """Return the list of commits from timestart to timeend,
         sorted ``from most recent to most ancient``.
 
