@@ -1,4 +1,4 @@
-# Python Module Template gitkv
+# Gitkv
 ## Overview
 
 Use a git repo as a key-value store.
