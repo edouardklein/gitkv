@@ -69,7 +69,7 @@ import re
 
 logger = logging.getLogger('gitkv')
 logger.setLevel(level=logging.INFO)
-__version__ = '0.0.3'
+__version__ = '0.0.4'
 
 
 def run_cmd(cmd, **kwargs):
@@ -427,17 +427,6 @@ class FileInRepo:
                           *args, **kwargs)
         logger.debug('FileInRepo open ' + self.filename)
 
-    def _entry_in_commit(self, tree):
-        """Find the first entry in tree whose name is self.filename
-
-        :param tree: tree of a commit
-        :return: a git entry
-        """
-        for entry in tree:
-            if entry.name == self.filename:
-                return entry
-        return None
-
     def show_blob(self, id_commit=None):
         """Return content binary of file at a commit
 
@@ -446,10 +435,30 @@ class FileInRepo:
             <http://www.pygit2.org/objects.html#commits>).
              If id_commit=None, return the most recent version
         :return: binary
+
+
+        >>> import gitkv
+        >>> repo = gitkv.Repo()
+        >>> repo.os.makedirs('dossier')
+        >>> with repo.open('dossier/afile', 'w') as f:
+        ...     f.write('Initial')
+        7
+        >>> repo.remote_sync()
+        >>> with repo.open('dossier/afile', 'w') as f:
+        ...     f.write('Edit')
+        4
+        >>> repo.remote_sync()
+        >>> with repo.open('dossier/afile') as f:
+        ...     for cid in [commit.id for commit in f.git_log()]:
+        ...         print(f.show_blob(cid))
+        b'Edit'
+        b'Initial'
+
         """
-        commit = (self.repo[id_commit] if id_commit is not None
-                  else self.git_log()[0])
-        return self.repo[self._entry_in_commit(commit.tree).id].data
+        commit = self.repo[id_commit] if id_commit is not None \
+            else self.git_log()[0]
+        # commit.tree.__getitem__(self.filename) TreeEntry has name = filnanme
+        return self.repo[commit.tree.__getitem__(self.filename).id].data
 
     def git_log(self, *options):
         """Return a list of all commits that modified this instance's file,
