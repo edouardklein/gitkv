@@ -69,7 +69,7 @@ import re
 
 logger = logging.getLogger('gitkv')
 logger.setLevel(level=logging.INFO)
-__version__ = '0.0.1'
+__version__ = '0.0.3'
 
 
 def run_cmd(cmd, **kwargs):
@@ -290,8 +290,7 @@ class Repo:
         except:
             pass
 
-    def git_log(self, *options,
-                custom_filter=lambda c: True):
+    def git_log(self, *options, custom_filter=lambda c: True):
         """Return the list of commits from timestart to timeend,
         sorted ``from most recent to most ancient``.
 
