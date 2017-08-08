@@ -286,8 +286,7 @@ class Repo:
             message = self.commit_message
         run_cmd(['git', 'add', '.'], cwd=self.path)
         try:
-            run_cmd(['git', 'commit', '--author="GitKV <GitKV@example.com>"',
-                                        '-m', message], cwd=self.path)
+            run_cmd(['git', '-c', 'user.email="gitkv@example.com"', '-c', 'user.name="gitkv"', 'commit', '-m', message], cwd=self.path)
         except:
             pass
 
@@ -548,7 +547,7 @@ class FileInRepo:
         # git commit
         try:
             output = subprocess.check_output(
-                ['git', 'commit', '--author="GitKV <GitKV@example.com>"', '-m', message],
+                ['git', '-c', 'user.email="gitkv@example.com"', '-c', 'user.name="gitkv"', 'commit', '-m', message],
                 cwd=self.gkvrepo.path)
             logger.debug('{}\n\t{}'.format('git commit:\n\t',
                                            output))
