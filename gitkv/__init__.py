@@ -274,11 +274,11 @@ class Repo:
 
     def git_push(self):
         """Push to remote repository."""
-        run_cmd(['git', 'push', 'origin', self.branch], cwd=self.path)
+        run_cmd(['git', '-c', 'user.email="gitkv@example.com"', '-c', 'user.name="gitkv"', 'push', 'origin', self.branch], cwd=self.path)
 
     def git_pull(self):
         """Pull from remote repository."""
-        run_cmd(['git', 'pull', 'origin', self.branch], cwd=self.path)
+        run_cmd(['git', '-c', 'user.email="gitkv@example.com"', '-c', 'user.name="gitkv"', 'pull', 'origin', self.branch], cwd=self.path)
 
     def git_commit(self, message=None):
         """Create a commit."""
