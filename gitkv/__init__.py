@@ -69,7 +69,7 @@ import re
 
 logger = logging.getLogger('gitkv')
 logger.setLevel(level=logging.INFO)
-__version__ = '0.0.4'
+__version__ = '0.0.5'
 
 
 def run_cmd(cmd, **kwargs):
@@ -286,7 +286,8 @@ class Repo:
             message = self.commit_message
         run_cmd(['git', 'add', '.'], cwd=self.path)
         try:
-            run_cmd(['git', 'commit', '-m', message], cwd=self.path)
+            run_cmd(['git', 'commit', '--author="GitKV <GitKV@example.com>",
+                                        '-m', message], cwd=self.path)
         except:
             pass
 
