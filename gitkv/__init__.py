@@ -61,7 +61,6 @@ import logging
 import pygit2
 import subprocess
 import tempfile
-import datetime
 import time
 import importlib
 import os
@@ -84,22 +83,6 @@ def run_cmd(cmd, **kwargs):
         logger.error('{}\n{}'.format(' '.join(cmd), e.output))
         raise RuntimeError
 
-
-def utc_to_timestamp(str_utc):
-    """Convert a date from UTC to UNIX timestamp
-
-    :param str_utc: UTC date (i.e : "2017-05-30 09:00:00")
-    :return: int UNIX timestamp (i.e. : 1496127600)
-
-    >>> import gitkv
-    >>> # 09:00:00 AM, Date 30 May 2017
-    >>> gitkv.utc_to_timestamp("2017-05-30 09:00:00") == 1496127600
-    True
-    """
-    return time.mktime(
-        datetime.datetime.strptime(
-            str_utc,
-            '%Y-%m-%d %H:%M:%S').timetuple())
 
 
 class open:
