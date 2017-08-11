@@ -61,7 +61,6 @@ import logging
 import pygit2
 import subprocess
 import tempfile
-import datetime
 import time
 import importlib
 import os
@@ -69,7 +68,7 @@ import re
 
 logger = logging.getLogger('gitkv')
 logger.setLevel(level=logging.INFO)
-__version__ = '0.0.4'
+__version__ = '0.0.5'
 
 
 def run_cmd(cmd, **kwargs):
@@ -84,22 +83,6 @@ def run_cmd(cmd, **kwargs):
         logger.error('{}\n{}'.format(' '.join(cmd), e.output))
         raise RuntimeError
 
-
-def utc_to_timestamp(str_utc):
-    """Convert a date from UTC to UNIX timestamp
-
-    :param str_utc: UTC date (i.e : "2017-05-30 09:00:00")
-    :return: int UNIX timestamp (i.e. : 1496127600)
-
-    >>> import gitkv
-    >>> # 09:00:00 AM, Date 30 May 2017
-    >>> gitkv.utc_to_timestamp("2017-05-30 09:00:00") == 1496127600
-    True
-    """
-    return time.mktime(
-        datetime.datetime.strptime(
-            str_utc,
-            '%Y-%m-%d %H:%M:%S').timetuple())
 
 
 class open:
@@ -274,11 +257,11 @@ class Repo:
 
     def git_push(self):
         """Push to remote repository."""
-        run_cmd(['git', 'push', 'origin', self.branch], cwd=self.path)
+        run_cmd(['git', '-c', 'user.email="gitkv@example.com"', '-c', 'user.name="gitkv"', 'push', 'origin', self.branch], cwd=self.path)
 
     def git_pull(self):
         """Pull from remote repository."""
-        run_cmd(['git', 'pull', 'origin', self.branch], cwd=self.path)
+        run_cmd(['git', '-c', 'user.email="gitkv@example.com"', '-c', 'user.name="gitkv"', 'pull', 'origin', self.branch], cwd=self.path)
 
     def git_commit(self, message=None):
         """Create a commit."""
@@ -286,7 +269,7 @@ class Repo:
             message = self.commit_message
         run_cmd(['git', 'add', '.'], cwd=self.path)
         try:
-            run_cmd(['git', 'commit', '-m', message], cwd=self.path)
+            run_cmd(['git', '-c', 'user.email="gitkv@example.com"', '-c', 'user.name="gitkv"', 'commit', '-m', message], cwd=self.path)
         except:
             pass
 
@@ -547,7 +530,7 @@ class FileInRepo:
         # git commit
         try:
             output = subprocess.check_output(
-                ['git', 'commit', '-m', message],
+                ['git', '-c', 'user.email="gitkv@example.com"', '-c', 'user.name="gitkv"', 'commit', '-m', message],
                 cwd=self.gkvrepo.path)
             logger.debug('{}\n\t{}'.format('git commit:\n\t',
                                            output))
