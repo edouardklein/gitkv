@@ -1,18 +1,16 @@
 """``gitkv`` lets you use a git repo as a key-value store using
-``open``-like sematics.
+``open``-like semantics.
 
 
+>>> import gitkv
 >>> # ... test setup ...
 >>> import tempfile
->>> import pygit2
 >>> tmpdir = tempfile.TemporaryDirectory()
 >>> # The repo url can be anything that git recognizes
 >>> # as a git repo
 >>> repo_url = tmpdir.name  # Here it is a local path
->>> gitrepo = pygit2.init_repository(repo_url, True)
->>> # ... /test setup ...
->>> 
->>> import gitkv
+>>> gitkv.Repo.git_init(repo_url, bare=True)
+>>> # ... /test isetup ...
 >>> with gitkv.open(repo_url, 'yourfile', 'w') as f:
 ...     f.write('Your content.')
 13
@@ -42,38 +40,36 @@
 ...     f.read()
 'My content.Additional content.'
 >>> # A repo's history is accessible with the git_log() function
->>> [c.message.strip() for c in gitkv.Repo(repo_url).git_log()]
+>>> repo = gitkv.Repo(repo_url)
+>>> [repo.message(c).strip() for c in repo.git_log()]
 ['Multiple edits', 'GitKV: yourfile', 'GitKV: initial commit']
 >>> # Which can be called on a file to get its specific history
 >>> with gitkv.open(repo_url, 'anotherfile') as f:
-...     [c.message.strip() for c in f.git_log()]
+...     [f.repo.message(c).strip() for c in f.git_log()]
 ['Multiple edits']
 >>> # show the plain content of a file in a commit
 >>> with gitkv.open(repo_url, 'yourfile') as f:
-...     idcommit = [c.id for c in f.git_log()
-...                     if c.message.strip() == 'GitKV: yourfile'][0]
-...     f.show_blob(idcommit).decode('utf-8')
+...     commit = [c for c in f.git_log()
+...                     if f.repo.message(c).strip() == 'GitKV: yourfile'][0]
+...     f.show_blob(commit)
 'Your content.'
 """
 
 import io
 import logging
-import pygit2
 import subprocess
 import tempfile
-import datetime
-import time
 import importlib
 import os
 import re
 
 logger = logging.getLogger('gitkv')
 logger.setLevel(level=logging.INFO)
-__version__ = '0.0.4'
+__version__ = '1.0.0'
 
 
 def run_cmd(cmd, **kwargs):
-    '''Run a command, log it, raise on error.'''
+    '''Run a command, log it, raise on error, return the output.'''
     try:
         output = subprocess.check_output(cmd, stderr=subprocess.STDOUT,
                                          **kwargs).decode('utf-8')
@@ -83,23 +79,6 @@ def run_cmd(cmd, **kwargs):
     except subprocess.CalledProcessError as e:
         logger.error('{}\n{}'.format(' '.join(cmd), e.output))
         raise RuntimeError
-
-
-def utc_to_timestamp(str_utc):
-    """Convert a date from UTC to UNIX timestamp
-
-    :param str_utc: UTC date (i.e : "2017-05-30 09:00:00")
-    :return: int UNIX timestamp (i.e. : 1496127600)
-
-    >>> import gitkv
-    >>> # 09:00:00 AM, Date 30 May 2017
-    >>> gitkv.utc_to_timestamp("2017-05-30 09:00:00") == 1496127600
-    True
-    """
-    return time.mktime(
-        datetime.datetime.strptime(
-            str_utc,
-            '%Y-%m-%d %H:%M:%S').timetuple())
 
 
 class open:
@@ -190,9 +169,17 @@ class Repo:
         """Start a ``with`` block."""
         return self
 
+    def is_empty(self):
+        '''Return True self is an empty repo'''
+        try:
+            run_cmd(['git', 'rev-list', 'HEAD'], cwd=self.path)
+        except RuntimeError:  # Will fail if HEAD does not exist, i.e.
+            return True  # if the repo is empty
+        return False
+
     def initial_commit_if_empty(self):
         '''Commit an empty .gitignore file if the given repo is empty'''
-        if not self.repo.is_empty:
+        if not self.is_empty():
             return
         with self.open('.gitignore', 'w') as f:
             f.write('\n')
@@ -224,13 +211,12 @@ class Repo:
             self.url = self.tmp_repo_dir.name + '/'
             logger.info('Initialazing a temporary empty git repo: '
                         + self.url)
-            pygit2.init_repository(self.url, True)
+            self.git_init(self.url, bare=True)
 
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.path = self.tmp_dir.name + '/'
         self.branch = 'master'
         self.git_clone(self.url, self.path)
-        self.repo = pygit2.Repository(self.path)
         self.initial_commit_if_empty()
         if url is None:
             self.git_push()
@@ -258,17 +244,17 @@ class Repo:
 
         return ModuleWrapper(item, prepend_path_to_first_arg)
 
-    def list_files(self, id_commit=None):
+    def list_files(self, id_commit='HEAD'):
         """List all files in repo in a commit."""
-        for entry in (self.repo[id_commit] if id_commit is not None
-                      else self.git_log()[0]).tree:
-            yield entry.name
+        return run_cmd(['git', 'ls-tree', '--name-only', id_commit],
+                       cwd=self.path).split('\n')
 
     def __iter__(self):
         """Iterator over all the files in the last commit of the repo"""
         return self.list_files().__iter__()
 
-    def git_clone(self, url, path):
+    @staticmethod
+    def git_clone(url, path):
         """Clone the remote repo at url in path."""
         run_cmd(['git', 'clone', url, path])
 
@@ -279,6 +265,19 @@ class Repo:
     def git_pull(self):
         """Pull from remote repository."""
         run_cmd(['git', 'pull', 'origin', self.branch], cwd=self.path)
+
+    @staticmethod
+    def git_init(path, bare=False):
+        """"Initialize an empty repo at path."""
+        run_cmd(['git', 'init'] + (['--bare'] if bare else []),
+                cwd=path)
+
+    def message(self, commit='HEAD'):
+        """Return the commit message of the given commit."""
+        return '\n'.join(run_cmd(['git', 'rev-list', '--format=%B',
+                                  '--max-count=1',
+                                  commit], cwd=self.path
+                                 ).split('\n')[1:])
 
     def git_commit(self, message=None):
         """Create a commit."""
@@ -291,23 +290,19 @@ class Repo:
             pass
 
     def git_log(self, *options, custom_filter=lambda c: True):
-        """Return the list of commits from timestart to timeend,
-        sorted ``from most recent to most ancient``.
-
+        """Return the list of commits in reverse chronological order
 
         :param options: String array, will be passed as arguments to `git log`
         :param custom_filter: func, optional, filter commits according to an
              arbitrary criterion
         :return: list of commits,
 
-        A commit is a
-        `pygit2 Commit object <http://www.pygit2.org/objects.html#commits>`_.
         """
         command = ['git', 'log'] + list(options)
         gitlog_process_output = run_cmd(command, cwd=self.path)
-        return [self.repo[c] for c in re.findall('(?<=commit )\w+',
-                                                 gitlog_process_output)
-                if custom_filter(self.repo[c])]
+        return [c for c in re.findall('(?<=commit )\w+',
+                                      gitlog_process_output)
+                if custom_filter(c)]
 
     def remote_sync(self):
         """Create a commit of our changes and push it to the remote repo."""
@@ -330,7 +325,7 @@ class Repo:
 
 
 class PushError(Exception):
-    """Raised when gitkv can't push in a remote repository because a conflict."""
+    "Raised when gitkv can't push in a remote repository because a conflict."
     pass
 
 
@@ -413,28 +408,24 @@ class FileInRepo:
         """Start a ``with`` block."""
         return self
 
-    def __init__(self, filename, gkvrepo, *args, **kwargs):
+    def __init__(self, filename, repo, *args, **kwargs):
         """Return the context manager.
 
         This class should be instanciated with py:func:`gitkv.open` or
         py:func:`Repo.open`, and not directly.
         """
         self.commit_message = 'GitKV: ' + filename
-        self.gkvrepo = gkvrepo  # gitkv object
-        self.repo = gkvrepo.repo  # libgit2 object
+        self.repo = repo  # gitkv object
         self.filename = filename
-        self.fd = io.open(os.path.join(self.gkvrepo.path, self.filename),
+        self.fd = io.open(os.path.join(self.repo.path, self.filename),
                           *args, **kwargs)
         logger.debug('FileInRepo open ' + self.filename)
 
-    def show_blob(self, id_commit=None):
-        """Return content binary of file at a commit
+    def show_blob(self, commit='HEAD'):
+        """Return the contents of self at a commit
 
         :param id_commit: type str, commit hex.
-             Or type _pygit2.Oid (pygit2 commit.id objet
-            <http://www.pygit2.org/objects.html#commits>).
-             If id_commit=None, return the most recent version
-        :return: binary
+        :return: this file's data
 
 
         >>> import gitkv
@@ -449,16 +440,15 @@ class FileInRepo:
         4
         >>> repo.remote_sync()
         >>> with repo.open('dossier/afile') as f:
-        ...     for cid in [commit.id for commit in f.git_log()]:
+        ...     for cid in f.git_log():
         ...         print(f.show_blob(cid))
-        b'Edit'
-        b'Initial'
+        Edit
+        Initial
 
         """
-        commit = self.repo[id_commit] if id_commit is not None \
-            else self.git_log()[0]
-        # commit.tree.__getitem__(self.filename) TreeEntry has name = filnanme
-        return self.repo[commit.tree.__getitem__(self.filename).id].data
+        return run_cmd(['git', 'cat-file', 'blob',
+                        '{}:{}'.format(commit, self.filename)],
+                       cwd=self.repo.path)
 
     def git_log(self, *options):
         """Return a list of all commits that modified this instance's file,
@@ -468,19 +458,15 @@ class FileInRepo:
 
         :return: list of commits.
 
-        A commit is a
-        `pygit2 Commit object <http://www.pygit2.org/objects.html#commits>`_.
-
         >>> # ... test setup ...
         >>> import tempfile
-        >>> import pygit2
         >>> import gitkv
         >>> import time
         >>> tmpdir = tempfile.TemporaryDirectory()
         >>> # The repo url can be anything that git recognizes
         >>> # as a git repo
         >>> repo_url = tmpdir.name  # Here it is a local path
-        >>> gitrepo = pygit2.init_repository(repo_url, True)
+        >>> gitkv.Repo.git_init(repo_url, bare=True)
         >>> # Simulate a conflict with 2 clones
         >>> repo_a = gitkv.Repo(repo_url)
         >>> with repo_a.open('myfile','w') as f:
@@ -530,10 +516,10 @@ class FileInRepo:
 
         >>> # Call git log of myfile
         >>> with gitkv.open(repo_url,'myfile') as f:
-        ...     [c.message.strip() for c in f.git_log('--date-order')]
+        ...     [f.repo.message(c).strip() for c in f.git_log('--date-order')]
         ['Merge', 'A write', 'B write', 'Create myfile']
         """
-        return self.gkvrepo.git_log(*(list(options) + [self.filename]))
+        return self.repo.git_log(*(list(options) + [self.filename]))
 
     def git_commit(self, message=None):
         """ Create a commit
@@ -543,12 +529,12 @@ class FileInRepo:
             message = self.commit_message
         logger.debug('From gitkv : Commit file ' + self.filename)
         # git add .
-        run_cmd(['git', 'add', self.filename], cwd=self.gkvrepo.path)
+        run_cmd(['git', 'add', self.filename], cwd=self.repo.path)
         # git commit
         try:
             output = subprocess.check_output(
                 ['git', 'commit', '-m', message],
-                cwd=self.gkvrepo.path)
+                cwd=self.repo.path)
             logger.debug('{}\n\t{}'.format('git commit:\n\t',
                                            output))
         except subprocess.CalledProcessError as e:

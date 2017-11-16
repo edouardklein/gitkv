@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 from codecs import open
 from os import path
 
-__version__ = '0.0.4'
+__version__ = '1.0.0'
 
 here = path.abspath(path.dirname(__file__))
 
@@ -11,7 +11,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
 
-install_requires = ['sphinx', 'flake8', 'coverage', 'pygit2']
+install_requires = ['sphinx', 'flake8', 'coverage']
 dependency_links = []
 
 setup(
