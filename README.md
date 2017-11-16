@@ -23,8 +23,8 @@ The above example is reasonably ACID:
 
 GitKV is great if:
 - You need to share a key value store across mutliple machines but don't want to manage a server
-- You need to have a complete history of what happened or may need to retrieve passed values
-- You want to access your distributed key-value store with the `open`-like you're used with when dealing with files
+- You need to have a complete history of what happened or may need to retrieve past values
+- You want to access your distributed key-value store with the `open`-like semantics you're used to with when dealing with files
 - You want to easily inspect and modify the store 'by hand' (just ssh in and use your favorite text editor and git on the command line)
 - You want stability and robustness
 
