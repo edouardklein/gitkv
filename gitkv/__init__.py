@@ -65,7 +65,7 @@ import re
 
 logger = logging.getLogger('gitkv')
 logger.setLevel(level=logging.INFO)
-__version__ = '1.0.0'
+__version__ = '1.0.1'
 
 
 def run_cmd(cmd, **kwargs):
