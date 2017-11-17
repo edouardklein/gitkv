@@ -1,4 +1,4 @@
-"""``gitkv`` lets you use a git repo as a key-value store using
+r"""``gitkv`` lets you use a git repo as a key-value store using
 ``open``-like semantics.
 
 
@@ -24,7 +24,7 @@
 >>> # by using the Repo class
 >>> with gitkv.Repo(repo_url) as repo:
 ...     with repo.open('yourfile', 'a') as f:
-...         f.write('Additional content.')
+...         f.write('\nAdditional content.')
 ...     data = repo.open('yourfile').read()
 ...     data = data.replace('Your', 'My')
 ...     with repo.open('yourfile', 'w') as f:
@@ -33,12 +33,12 @@
 ...         f.write('something')
 ...     # The commit message may be specified before the block closes
 ...     repo.commit_message = 'Multiple edits'
-19
-30
+20
+31
 9
 >>> with gitkv.open(repo_url, 'yourfile') as f:
-...     f.read()
-'My content.Additional content.'
+...     [l.strip() for l in f]  # Files are iterable over their lines
+['My content.', 'Additional content.']
 >>> # A repo's history is accessible with the git_log() function
 >>> repo = gitkv.Repo(repo_url)
 >>> [repo.message(c).strip() for c in repo.git_log()]
@@ -65,7 +65,7 @@ import re
 
 logger = logging.getLogger('gitkv')
 logger.setLevel(level=logging.INFO)
-__version__ = '1.0.1'
+__version__ = '1.1.0'
 
 
 def run_cmd(cmd, **kwargs):
@@ -112,6 +112,14 @@ class open:
         self.repo = Repo(url)
         self.repo.commit_message = "GitKV: " + self.filename
         self.fir = self.repo.open(filename, *args, **kwargs)
+
+    def __iter__(self):
+        """Explicitely delegate __iter__ to our fir.
+
+        Our __getattr__ trickery can not handle dunder methods, we need
+        to explicietly pass the call.
+        https://bugs.python.org/issue30352"""
+        return self.fir.__iter__()
 
     def __getattr__(self, item):
         """Pass unknown attribute requests down to our FileInRepo instance"""
@@ -539,6 +547,14 @@ class FileInRepo:
                                            output))
         except subprocess.CalledProcessError as e:
             logger.debug(e.output)
+
+    def __iter__(self):
+        """Explicitely delegate __iter__ to our real file descriptor.
+
+        Our __getattr__ trickery can not handle dunder methods, we need
+        to explicietly pass the call.
+        https://bugs.python.org/issue30352"""
+        return self.fd.__iter__()
 
     def __getattr__(self, item):
         """Search attribute not defined in this class"""
