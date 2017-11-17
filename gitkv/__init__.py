@@ -65,7 +65,7 @@ import re
 
 logger = logging.getLogger('gitkv')
 logger.setLevel(level=logging.INFO)
-__version__ = '1.1.0'
+__version__ = '1.1.1'
 
 
 def run_cmd(cmd, **kwargs):
@@ -77,8 +77,7 @@ def run_cmd(cmd, **kwargs):
                                        '\n\t'.join(output.split('\n'))))
         return output
     except subprocess.CalledProcessError as e:
-        logger.error('{}\n{}'.format(' '.join(cmd), e.output))
-        raise RuntimeError
+        raise RuntimeError('{}\n{}'.format(' '.join(cmd), e.output))
 
 
 class open:
