@@ -67,6 +67,8 @@ logger = logging.getLogger('gitkv')
 logger.setLevel(level=logging.INFO)
 __version__ = '1.1.1'
 
+global EMAIL
+EMAIL='\'<>\''
 
 def run_cmd(cmd, **kwargs):
     '''Run a command, log it, raise on error, return the output.'''
@@ -271,7 +273,7 @@ class Repo:
 
     def git_pull(self):
         """Pull from remote repository."""
-        run_cmd(['git', 'pull', 'origin', self.branch], cwd=self.path)
+        run_cmd(['git','-c', 'user.email=' + EMAIL, 'pull', 'origin', self.branch], cwd=self.path)
 
     @staticmethod
     def git_init(path, bare=False):
@@ -292,7 +294,7 @@ class Repo:
             message = self.commit_message
         run_cmd(['git', 'add', '.'], cwd=self.path)
         try:
-            run_cmd(['git', 'commit', '-m', message], cwd=self.path)
+            run_cmd(['git','-c', 'user.email=' + EMAIL, 'commit', '-m', message], cwd=self.path)
         except:
             pass
 
@@ -540,7 +542,7 @@ class FileInRepo:
         # git commit
         try:
             output = subprocess.check_output(
-                ['git', 'commit', '-m', message],
+                ['git', '-c', 'user.email=' + EMAIL, 'commit', '-m', message],
                 cwd=self.repo.path)
             logger.debug('{}\n\t{}'.format('git commit:\n\t',
                                            output))

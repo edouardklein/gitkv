@@ -1,18 +1,18 @@
 Source: gitkv
 Section: misc
 Priority: optional
-Maintainer: Edouard Klein <edouardklein@gmail.com>
+Maintainer: Edouard Klein <edouardklein@gmailnospam.com>
 Build-Depends: debhelper (>= 9),
  dh-python,
  python3-all,
  python3-setuptools
 Standards-Version: 1.1.1
 X-Python-Version: >= 3.0	
-homepage: https://edouardklein.github.iogi/tkv
+homepage: https://edouardklein.github.io/gitkv
 
 
 
 Package: python3-gitkv
 Architecture: all
-Depends: ${misc:Depends}, ${python3:Depends}
-Description: Supporting tools for the PMJQ distributed computing\framework
+Depends: ${misc:Depends}, ${python3:Depends}, git
+Description: use a git repo as a key-value store
