@@ -67,7 +67,7 @@ logger = logging.getLogger('gitkv')
 logger.setLevel(level=logging.INFO)
 __version__ = '1.1.1'
 
-global EMAIL
+
 EMAIL='\'<>\''
 
 def run_cmd(cmd, **kwargs):
